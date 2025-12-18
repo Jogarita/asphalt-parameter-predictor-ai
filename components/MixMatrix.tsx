@@ -57,6 +57,13 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
 
   return (
     <div className="border border-slate-300 bg-white flex flex-col h-full shadow-sm">
+      {/* Mobile Scroll Hint */}
+      <div className="md:hidden bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex justify-between items-center">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mix Data Matrix</span>
+        <span className="text-[9px] text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+          Scroll horizontally →
+        </span>
+      </div>
       {/* Table Header Wrapper to handle horizontal scroll */}
       <div className="overflow-x-auto flex-1">
         <table className="min-w-full h-full text-sm text-left border-collapse">

@@ -60,7 +60,7 @@ const GradationChart: React.FC<GradationChartProps> = ({ columns }) => {
   const data = [originPoint, ...sieveData];
 
   return (
-    <div className="bg-white p-4 border border-slate-300 rounded-sm h-[400px] w-full flex flex-col">
+    <div className="bg-white p-4 border border-slate-300 rounded-sm h-[300px] md:h-[400px] w-full flex flex-col">
       <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Gradation Curve (0.45 Power Chart)</h3>
       <div className="flex-1 w-full min-h-0">
         <ResponsiveContainer width="100%" height="100%">

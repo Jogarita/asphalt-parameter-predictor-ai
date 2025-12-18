@@ -329,20 +329,20 @@ const App: React.FC = () => {
       />
       {/* Header */}
       <header className="bg-white border-b border-slate-300 sticky top-0 z-40">
-        <div className="max-w-[1800px] mx-auto px-4 lg:px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="font-bold text-xl tracking-tight text-slate-900 leading-none">Asphalt Parameter Predictor</h1>
-            <div className="h-6 w-px bg-slate-300"></div>
-            <p className="text-sm text-slate-500 font-mono font-medium">Predict VMA, IDEAL-CT, Rut Depth, I-FIT</p>
+        <div className="max-w-[1800px] mx-auto px-4 lg:px-6 h-auto md:h-20 flex flex-col md:flex-row items-center justify-between py-4 md:py-0 gap-4">
+          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-center md:text-left">
+            <h1 className="font-bold text-lg md:text-xl tracking-tight text-slate-900 leading-none">Asphalt Parameter Predictor</h1>
+            <div className="hidden md:block h-6 w-px bg-slate-300"></div>
+            <p className="text-[10px] md:text-sm text-slate-500 font-mono font-medium">Predict VMA, IDEAL-CT, Rut Depth, I-FIT</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 md:gap-2">
             {/* Standard App Toolkit */}
             <button
               onClick={() => setIsInfoOpen(true)}
-              className="p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-orange-600 transition-colors"
+              className="p-1.5 md:p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-orange-600 transition-colors"
               title="How it Works"
             >
-              <Info size={20} />
+              <Info size={18} className="md:w-5 md:h-5" />
             </button>
             <div className="h-6 w-px bg-slate-300 mx-1"></div>
 
@@ -374,24 +374,20 @@ const App: React.FC = () => {
 
             <button
               onClick={handleShare}
-              className="p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-orange-600 transition-colors"
+              className="p-1.5 md:p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-orange-600 transition-colors"
               title="Share Project"
             >
-              <Share2 size={20} />
-            </button>
-
-            <button className="md:hidden p-2 hover:bg-slate-100 rounded text-slate-600">
-              <Menu size={20} />
+              <Share2 size={18} className="md:w-5 md:h-5" />
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-[1800px] mx-auto w-full p-4 lg:p-6 grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+      <main className="flex-1 max-w-[1800px] mx-auto w-full p-3 md:p-4 lg:p-6 grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch overflow-x-hidden">
 
         {/* Left Column: Data Matrix */}
-        <div className="xl:col-span-8 flex flex-col h-full">
+        <div className="xl:col-span-8 flex flex-col h-full min-w-0">
           <div className="flex-1 flex flex-col">
             <MixMatrix
               columns={columns}
@@ -406,7 +402,7 @@ const App: React.FC = () => {
         </div>
 
         {/* Right Column: Dashboard & Controls */}
-        <div className="xl:col-span-4 flex flex-col gap-6 sticky top-20">
+        <div className="xl:col-span-4 flex flex-col gap-4 md:gap-6 xl:sticky xl:top-20">
 
           {/* 1. Action Card */}
           <div className="bg-white p-4 border border-slate-300">

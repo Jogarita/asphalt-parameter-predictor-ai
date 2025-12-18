@@ -14,15 +14,13 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, targetName,
     return (
       <div className="bg-white border border-slate-200 shadow-sm rounded-none text-center min-h-[360px] flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-white to-slate-50 opacity-50"></div>
-        <div className="relative z-10 flex flex-col items-center gap-6">
-          <div className="relative">
-            <div className="bg-white p-4 rounded-none shadow-sm ring-1 ring-slate-100 relative">
-              <Loader2 size={32} className="text-orange-500 animate-spin opacity-60" />
-            </div>
+        <div className="relative z-10 flex flex-col items-center gap-8">
+          <div className="relative animate-pulse duration-[2s]">
+            <img src="/omix_logo_rect.png" alt="OMIX" className="h-12 w-auto object-contain opacity-60" />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col items-center gap-1">
             <p className="font-bold text-xs uppercase tracking-[0.2em] text-slate-400">Running Simulation</p>
-            <p className="text-[10px] text-slate-300 font-medium">Calculating parameters...</p>
+            <p className="text-[10px] text-slate-300 font-medium italic">Calculating engine logic...</p>
           </div>
         </div>
       </div>
