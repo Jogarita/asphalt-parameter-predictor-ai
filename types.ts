@@ -19,6 +19,7 @@ export interface MixColumn {
   type: 'reference' | 'target';
   isSelected: boolean; // If true, used in model training/prediction context
   values: { [key: string]: string | undefined }; // Storing as strings to handle partial inputs/decimals easily
+  predictedKeys?: Set<string>; // Keys whose values were set by the prediction model (not user-entered)
 }
 
 export interface PredictionResult {

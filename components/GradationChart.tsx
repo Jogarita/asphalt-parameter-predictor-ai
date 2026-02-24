@@ -17,24 +17,25 @@ interface GradationChartProps {
 }
 
 const GradationChart: React.FC<GradationChartProps> = ({ columns }) => {
+  const NMAS_MM = 19.0;
+  const POWER = 0.45;
+  const nmasPower = Math.pow(NMAS_MM, POWER);
+
   // Transform data for Recharts
   // 1. Generate sieve data
   const sieveData = SIEVES.map((sieve) => {
-    // Identity Line Calculation (0.45 Power Chart)
-    // To visualize a straight 45-degree line, we draw to the Maximum Sieve (25.0mm)
-    // Adjust this if your project uses 19.0mm as the strict 100% boundary, 
-    // but visually 25.0mm makes the "trial 1" (which hits 100 at 25) match the line end.
-    const MAX_SIZE = 25.0;
-    const identityVal = 100 * Math.pow(sieve.sizeMm / MAX_SIZE, 0.45);
-
     // X-Axis scaling for 0.45 Power Chart
-    const xScale = Math.pow(sieve.sizeMm, 0.45);
+    const xScale = Math.pow(sieve.sizeMm, POWER);
+
+    // MDL on 0.45 power chart is a straight line from (0,0) to (NMAS,100).
+    // We stop the MDL at NMAS to avoid a horizontal tail beyond the anchor.
+    const identityVal = sieve.sizeMm <= NMAS_MM ? (xScale / nmasPower) * 100 : null;
 
     const row: any = {
       name: sieve.label,
       size: sieve.sizeMm,
       xScale: xScale,
-      identity: Math.min(100, identityVal), // Cap at 100
+      identity: identityVal,
     };
     columns.forEach((col) => {
       // Only include if value exists
@@ -60,7 +61,7 @@ const GradationChart: React.FC<GradationChartProps> = ({ columns }) => {
   const data = [originPoint, ...sieveData];
 
   return (
-    <div className="bg-white p-4 border border-slate-300 rounded-sm h-[300px] md:h-[400px] w-full flex flex-col">
+    <div className="bg-white p-4 border border-slate-300 rounded-sm min-h-[300px] md:min-h-[400px] h-full w-full flex flex-col">
       <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Gradation Curve (0.45 Power Chart)</h3>
       <div className="flex-1 w-full min-h-0">
         <ResponsiveContainer width="100%" height="100%">
@@ -104,6 +105,11 @@ const GradationChart: React.FC<GradationChartProps> = ({ columns }) => {
               labelFormatter={(val) => {
                 const match = data.find(d => Math.abs(d.xScale - Number(val)) < 0.001);
                 return match ? match.name : '';
+              }}
+              formatter={(value, name) => {
+                if (typeof value !== 'number') return [value, name];
+                if (String(name).includes('MDL')) return [value.toFixed(1), name];
+                return [value, name];
               }}
             />
             <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />

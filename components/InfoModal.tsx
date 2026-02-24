@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, BookOpen, GitMerge, Calculator, Save, Activity } from 'lucide-react';
+import { X, BookOpen, Calculator, Save, Activity } from 'lucide-react';
 
 interface InfoModalProps {
     isOpen: boolean;
@@ -34,10 +34,10 @@ const InfoModal: React.FC<InfoModalProps> = ({ isOpen, onClose }) => {
                     <div className="flex gap-4">
                         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg border border-blue-100">1</div>
                         <div>
-                            <h3 className="font-bold text-slate-800 mb-2">Input Reference Data</h3>
+                            <h3 className="font-bold text-slate-800 mb-2">Input Trial Data</h3>
                             <p className="text-sm text-slate-600 leading-relaxed">
-                                Enter gradation and measured volumetric data (Gsb, VMA, etc.) for your existing lab trials in the <span className="font-semibold text-slate-800">Reference Columns</span>.
-                                The more historical data you provide, the better the calibration.
+                                Enter gradation and measured volumetric data (Gsb, VMA, etc.) for your available lab trials.
+                                The more complete trial data you provide, the better the calibration.
                             </p>
                         </div>
                     </div>
@@ -46,9 +46,9 @@ const InfoModal: React.FC<InfoModalProps> = ({ isOpen, onClose }) => {
                     <div className="flex gap-4">
                         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center font-bold text-lg border border-orange-100">2</div>
                         <div>
-                            <h3 className="font-bold text-slate-800 mb-2">Define Prediction Target</h3>
+                            <h3 className="font-bold text-slate-800 mb-2">Define Target Trial</h3>
                             <p className="text-sm text-slate-600 leading-relaxed">
-                                Enter the gradation and Gsb for the new mix design you want to analyze in the <span className="font-semibold text-orange-700 bg-orange-50 px-1 rounded">Prediction Target</span> column.
+                                Enter the gradation and Gsb for the trial you want to predict in the highlighted last trial column.
                             </p>
                         </div>
                     </div>
@@ -62,7 +62,7 @@ const InfoModal: React.FC<InfoModalProps> = ({ isOpen, onClose }) => {
                             <h3 className="font-bold text-slate-800 mb-2">Run Prediction</h3>
                             <p className="text-sm text-slate-600 leading-relaxed">
                                 Select a parameter (VMA, Rut Depth, etc.) from the Analyze panel and click <strong>Run Prediction</strong>.
-                                The system uses your reference data to calibrate the model specifically for your materials.
+                                The system uses your selected trial data to calibrate the model specifically for your materials.
                             </p>
                         </div>
                     </div>
@@ -75,15 +75,15 @@ const InfoModal: React.FC<InfoModalProps> = ({ isOpen, onClose }) => {
                         <div>
                             <h3 className="font-bold text-slate-800 mb-2">Verify & Refine</h3>
                             <p className="text-sm text-slate-600 leading-relaxed mb-3">
-                                Once you are satisfied with a design, click <strong>Save as Trial</strong>. This promotes the target to a Reference Trial.
+                                After lab testing, enter measured values in your trial columns and rerun predictions to refine calibration.
                             </p>
                             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm">
                                 <div className="flex items-start gap-3">
                                     <Activity className="text-slate-400 mt-0.5" size={16} />
                                     <div>
                                         <strong className="text-slate-900">Calibration Loop:</strong><br />
-                                        Measure the actual value in the lab and enter it in the "Measured" input field.
-                                        The system will now use this <span className="italic">verified</span> data point to improve all future predictions.
+                                        Keep trial inputs complete (gradation, Gsb, and measured output values).
+                                        Each verified trial improves future predictions.
                                     </div>
                                 </div>
                             </div>

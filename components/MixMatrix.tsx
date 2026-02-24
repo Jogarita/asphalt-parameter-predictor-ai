@@ -1,14 +1,13 @@
 import React from 'react';
-import { MixColumn, Sieve, MixProperty } from '../types';
+import { MixColumn } from '../types';
 import { SIEVES, PROPERTIES } from '../constants';
-import { Trash2, Plus, Info } from 'lucide-react';
-import Tooltip from './Tooltip';
+import { Trash2, Plus } from 'lucide-react';
 
 interface MixMatrixProps {
   columns: MixColumn[];
+  targetParam: 'vma' | 'rutDepth' | 'ctIndex' | 'iFit';
   onUpdateValue: (colId: string, rowId: string, value: string | undefined) => void;
   onBulkUpdate: (colId: string, updates: Record<string, string>) => void;
-  onPromoteTarget: () => void;
   onToggleColumn: (colId: string) => void;
   onAddColumn: () => void;
   onRemoveColumn: (colId: string) => void;
@@ -16,9 +15,9 @@ interface MixMatrixProps {
 
 const MixMatrix: React.FC<MixMatrixProps> = ({
   columns,
+  targetParam,
   onUpdateValue,
   onBulkUpdate,
-  onPromoteTarget,
   onToggleColumn,
   onAddColumn,
   onRemoveColumn,
@@ -66,10 +65,10 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
       </div>
       {/* Table Header Wrapper to handle horizontal scroll */}
       <div className="overflow-x-auto flex-1">
-        <table className="min-w-full h-full text-sm text-left border-collapse">
+        <table className="min-w-full h-full text-base text-left border-collapse">
           <thead className="bg-slate-100 text-slate-800 font-semibold sticky top-0 z-30 shadow-[0_1px_0_0_rgba(203,213,225,1)]">
             <tr>
-              <th className="p-2 w-[200px] min-w-[200px] max-w-[200px] sticky left-0 bg-slate-100 border-r border-slate-300 z-40 text-xs font-bold uppercase tracking-widest text-slate-700">
+              <th className="p-2.5 w-[200px] min-w-[200px] max-w-[200px] sticky left-0 bg-slate-100 border-r border-slate-300 z-40 text-sm font-bold uppercase tracking-widest text-slate-700">
                 Design Parameter
               </th>
               {columns.map((col) => (
@@ -81,7 +80,7 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
                   <div className="flex flex-col gap-2">
                     <div className="flex justify-between items-start">
                       <span className="text-xs font-bold uppercase tracking-widest text-slate-500 opacity-90">
-                        {col.type === 'target' ? 'Prediction' : 'Reference'}
+                        Trial
                       </span>
                       {col.type === 'reference' && columns.filter(c => c.type === 'reference').length > 1 && (
                         <button
@@ -92,22 +91,12 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
                           <Trash2 size={14} />
                         </button>
                       )}
-
-                      {col.type === 'target' && (
-                        <button
-                          onClick={onPromoteTarget}
-                          className="text-[10px] bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-0.5 rounded-sm border border-orange-200 transition-colors uppercase font-bold tracking-wide"
-                          title="Save as Reference Trial"
-                        >
-                          Save as Reference
-                        </button>
-                      )}
                     </div>
                     <input
                       type="text"
                       value={col.name}
                       onChange={(e) => onUpdateValue(col.id, 'name', e.target.value)}
-                      className="bg-transparent font-bold focus:outline-none border-b border-transparent focus:border-orange-400 w-full"
+                      className="bg-transparent font-bold text-base focus:outline-none border-b border-transparent focus:border-orange-400 w-full"
                     />
 
                     {col.type === 'reference' && (
@@ -137,8 +126,8 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
 
           <tbody className="divide-y divide-slate-100">
             {/* Section: Gradation */}
-            <tr className="bg-slate-50 h-[44px]">
-              <td className="p-0 text-xs font-bold uppercase tracking-widest text-slate-600 sticky left-0 bg-slate-50 border-r border-b border-slate-300 z-20">
+            <tr className="bg-slate-50 h-[48px]">
+              <td className="p-0 text-sm font-bold uppercase tracking-widest text-slate-600 sticky left-0 bg-slate-50 border-r border-b border-slate-300 z-20">
                 <div className="flex items-center h-full px-2 pl-2">
                   Gradation (% Passing)
                 </div>
@@ -147,7 +136,7 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
             </tr>
 
             {SIEVES.map((sieve) => (
-              <tr key={sieve.id} className="hover:bg-slate-50 transition-colors group h-[44px]">
+              <tr key={sieve.id} className="hover:bg-slate-50 transition-colors group h-[48px]">
                 <td className="p-0 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-b border-slate-300/50 z-20">
                   <div className="flex items-center h-full px-3 py-1 font-medium text-slate-700 text-xs">
                     {sieve.label}
@@ -164,7 +153,7 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
                       value={col.values[sieve.id] || ''}
                       onChange={(e) => onUpdateValue(col.id, sieve.id, e.target.value)}
                       onPaste={(e) => handlePaste(e, col.id, sieve.id)}
-                      className={`w-full h-full py-1.5 px-2 text-right bg-transparent focus:bg-white focus:outline-none focus:ring-2 focus:ring-inset font-mono text-sm tabular-nums text-slate-900 placeholder-slate-200 ${col.type === 'target' ? 'focus:ring-orange-500' : 'focus:ring-blue-500'
+                      className={`w-full h-full py-1.5 px-2 text-right bg-transparent focus:bg-white focus:outline-none focus:ring-2 focus:ring-inset font-mono text-base tabular-nums text-slate-900 placeholder-slate-200 ${col.type === 'target' ? 'focus:ring-orange-500' : 'focus:ring-blue-500'
                         }`}
                       placeholder="-"
                     />
@@ -175,8 +164,8 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
             ))}
 
             {/* Section: Properties */}
-            <tr className="bg-slate-50 border-t border-slate-300 h-[44px]">
-              <td className="p-0 text-xs font-bold uppercase tracking-widest text-slate-600 sticky left-0 bg-slate-50 border-r border-b border-slate-300 z-20">
+            <tr className="bg-slate-50 border-t border-slate-300 h-[48px]">
+              <td className="p-0 text-sm font-bold uppercase tracking-widest text-slate-600 sticky left-0 bg-slate-50 border-r border-b border-slate-300 z-20">
                 <div className="flex items-center h-full px-2 pl-2">
                   Volumetrics & Performance
                 </div>
@@ -184,96 +173,73 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
               <td colSpan={columns.length + 1} className="border-b border-slate-300"></td>
             </tr>
 
-            {PROPERTIES.map((prop) => (
+            {/* Properties rows: input fields (Gsb, FAA) and the selected output parameter.
+                Output parameters that aren't the current prediction target are hidden entirely
+                so the matrix only shows what's relevant. Optional fields (FAA, reference
+                measured values) show a toggle — the cell starts empty with a "+" button;
+                clicking it activates the input. */}
+            {PROPERTIES.filter((prop) => prop.isInput || prop.id === targetParam).map((prop) => (
               <tr key={prop.id} className="hover:bg-slate-50 transition-colors group h-[44px]">
                 <td className="p-0 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-b border-slate-300/50 z-20">
-                  <div className="flex items-center justify-between h-full px-3 py-1 font-medium text-slate-700 text-xs">
+                  <div className="flex items-center gap-1.5 h-full px-3 py-1 font-medium text-slate-700 text-xs">
                     <span>{prop.label}</span>
-                    <Tooltip content={prop.description || prop.label} side="right">
-                      <div className="cursor-help opacity-60 hover:opacity-100 transition-opacity p-1">
-                        <Info size={12} className="text-slate-400" />
-                      </div>
-                    </Tooltip>
+                    {prop.isOptional && (
+                      <span className="text-[9px] bg-blue-50 border border-blue-200 text-blue-500 px-1.5 py-0.5 rounded-full font-semibold leading-none">Optional</span>
+                    )}
                   </div>
                 </td>
                 {columns.map((col) => {
-                  const isReadOnly = col.type === 'target' && !prop.isInput;
+                  const isOutputProperty = !prop.isInput;
+                  const isPredicted = col.predictedKeys?.has(prop.id) ?? false;
 
                   // Optional Properties Logic
-                  const isOptionalProp = ['faa', 'ctIndex', 'rutDepth', 'iFit'].includes(prop.id);
+                  const isOptionalProp = prop.id === 'faa' || (col.type === 'reference' && isOutputProperty && prop.id === targetParam);
                   const canToggle = isOptionalProp && (col.type === 'reference' || prop.isInput);
                   const isActive = col.values[prop.id] !== undefined;
 
                   return (
                     <td
                       key={`${col.id}-${prop.id}`}
-                      className={`p-0 border-r border-b border-slate-300/50 h-[36px] ${col.type === 'target' ? (isReadOnly ? 'bg-orange-100/50' : 'bg-orange-50/20') : ''
+                      className={`p-0 border-r border-b border-slate-300/50 h-[36px] ${col.type === 'target' && isOutputProperty ? 'bg-orange-50/20' : ''
                         }`}
                     >
                       <div className="relative h-full flex items-center justify-center">
                         {canToggle && !isActive ? (
                           <button
                             onClick={() => onUpdateValue(col.id, prop.id, '')}
-                            className="text-slate-300 hover:text-blue-600 w-full h-full flex items-center justify-center transition-colors hover:bg-slate-50"
+                            className="text-slate-300 hover:text-blue-600 w-full h-full flex flex-col items-center justify-center transition-colors hover:bg-slate-50 gap-0.5"
                             title="Add Value"
                           >
                             <Plus size={12} className="opacity-50" />
+                            <span className="text-[8px] opacity-40 leading-none">Tap to add</span>
                           </button>
                         ) : (
                           <>
-                            {col.values[`${prop.id}_predicted`] ? (
-                              // Split View for Verified Trials
-                              <div className="flex flex-col w-full h-full border-l-2 border-l-orange-100">
-                                {/* Predicted (Historical) */}
-                                <div className="h-1/2 flex items-center justify-end px-2 bg-slate-50 text-slate-400 text-[10px] select-none border-b border-slate-100" title="Previously Predicted Value">
-                                  <span className="mr-1 italic opacity-70">Pred:</span>
-                                  {col.values[`${prop.id}_predicted`]}
-                                </div>
-                                {/* Measured (Active Input) */}
-                                <div className="h-1/2 relative bg-white">
-                                  <input
-                                    type="number"
-                                    value={col.values[prop.id] || ''}
-                                    onChange={(e) => onUpdateValue(col.id, prop.id, e.target.value)}
-                                    className="w-full h-full text-right bg-transparent focus:outline-none focus:bg-orange-50/50 px-2 text-xs font-bold text-orange-900"
-                                    placeholder="Meas."
-                                  />
-                                  {/* Remove Button (Modified position for split cell) */}
-                                  <button
-                                    onClick={() => onUpdateValue(col.id, prop.id, undefined)}
-                                    className="absolute left-0 top-0 bottom-0 px-0.5 opacity-0 hover:opacity-100 text-slate-300 hover:text-red-400 flex items-center"
-                                    title="Clear Measured Value"
-                                  >
-                                    <Trash2 size={10} />
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              // Standard Single Input View
-                              <>
-                                <input
-                                  type="number"
-                                  readOnly={isReadOnly}
-                                  value={col.values[prop.id] || ''}
-                                  onChange={(e) => onUpdateValue(col.id, prop.id, e.target.value)}
-                                  className={`w-full h-full py-1.5 px-2 text-right bg-transparent focus:outline-none rounded-none font-mono text-sm tabular-nums
-                                                ${isReadOnly
-                                      ? 'text-orange-700 font-bold cursor-default'
-                                      : 'focus:bg-white focus:ring-2 focus:ring-inset focus:ring-orange-500 text-slate-900'
-                                    }`}
-                                  placeholder={isReadOnly ? "---" : "-"}
-                                />
+                            {isPredicted && (
+                              <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[7px] font-bold uppercase tracking-wider text-orange-400 leading-none pointer-events-none">
+                                Pred.
+                              </span>
+                            )}
+                            <input
+                              type="number"
+                              value={col.values[prop.id] || ''}
+                              onChange={(e) => onUpdateValue(col.id, prop.id, e.target.value)}
+                              className={`w-full h-full py-1.5 px-2 text-right bg-transparent focus:outline-none rounded-none font-mono text-sm tabular-nums
+                                            ${isPredicted
+                                  ? 'text-orange-600 font-bold'
+                                  : 'text-slate-900'
+                                } focus:bg-white focus:ring-2 focus:ring-inset focus:ring-orange-500`}
+                              placeholder="-"
+                            />
 
-                                {canToggle && !isReadOnly && (
-                                  <button
-                                    onClick={() => onUpdateValue(col.id, prop.id, undefined)}
-                                    className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 hover:opacity-100 text-slate-300 hover:text-red-400 p-1 bg-white/80 rounded transition-opacity"
-                                    title="Remove value"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                )}
-                              </>
+                            {canToggle && (
+                              <button
+                                onClick={() => onUpdateValue(col.id, prop.id, undefined)}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 hover:opacity-100 text-slate-300 hover:text-red-400 p-1 bg-white/80 rounded transition-opacity"
+                                title="Remove value"
+                              >
+                                <Trash2 size={12} />
+                              </button>
                             )}
                           </>
                         )}

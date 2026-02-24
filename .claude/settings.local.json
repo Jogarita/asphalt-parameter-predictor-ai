@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tail:*)",
+      "Bash(cd /c/Users/josue/Documents/GitHub/asphalt-parameter-predictor && npm run build 2>&1)",
+      "Bash(node:*)",
+      "Bash(git:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(cd:*)"
+    ]
+  }
+}

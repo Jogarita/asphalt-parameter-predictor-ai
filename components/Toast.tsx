@@ -9,11 +9,13 @@ interface ToastProps {
 
 const Toast: React.FC<ToastProps> = ({ message, type = 'success', onClose }) => {
     useEffect(() => {
+        // Errors stay visible until the user dismisses them; other toasts auto-close.
+        if (type === 'error') return;
         const timer = setTimeout(() => {
             onClose();
         }, 3000);
         return () => clearTimeout(timer);
-    }, [onClose]);
+    }, [onClose, type]);
 
     const bgColors = {
         success: 'bg-slate-900',
