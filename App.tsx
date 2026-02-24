@@ -1,23 +1,52 @@
-
+/**
+ * App.tsx — Main orchestrator for the Asphalt Parameter Predictor.
+ *
+ * Manages the central application state (`columns: MixColumn[]`) and coordinates
+ * all top-level operations:
+ *   - User input flows through MixMatrix into columns state
+ *   - handlePredict() dispatches to runPrediction() in predictionModels.ts
+ *   - Prediction results are written back into the target column and displayed
+ *     by ResultsDashboard
+ *   - File I/O: JSON save/load for session persistence, Excel export via xlsx
+ */
 import React, { useState, useRef } from 'react';
 import { INITIAL_COLUMNS, SIEVES, PROPERTIES } from './constants';
 import { MixColumn, PredictionResult } from './types';
 import MixMatrix from './components/MixMatrix';
 import GradationChart from './components/GradationChart';
 import ResultsDashboard from './components/ResultsDashboard';
-import { runPrediction } from './services/predictionModels';
+import { runPrediction, validateGradation } from './services/predictionModels';
 import InfoModal from './components/InfoModal';
 import Toast from './components/Toast';
-import { Calculator, ArrowRight, Loader2, Share2, Save, Menu, Info, Table, FolderUp } from 'lucide-react';
+import { Calculator, ArrowRight, Loader2, Share2, Save, RotateCcw, Info, Table, FolderUp, Maximize2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PremiumSelect from './components/PremiumSelect';
 
+const cloneColumns = (source: MixColumn[]): MixColumn[] =>
+  source.map((col) => ({ ...col, values: { ...col.values }, predictedKeys: col.predictedKeys ? new Set(col.predictedKeys) : undefined }));
+
+// Serialize columns for JSON save — convert Set to array
+const serializeColumns = (cols: MixColumn[]): string =>
+  JSON.stringify(cols.map(col => ({
+    ...col,
+    predictedKeys: col.predictedKeys?.size ? Array.from(col.predictedKeys) : undefined,
+  })), null, 2);
+
+// Restore predictedKeys from array back to Set when loading
+const deserializeColumns = (parsed: any[]): MixColumn[] =>
+  parsed.map(col => ({
+    ...col,
+    predictedKeys: col.predictedKeys ? new Set(col.predictedKeys) : undefined,
+  }));
+
 const App: React.FC = () => {
-  const [columns, setColumns] = useState<MixColumn[]>(INITIAL_COLUMNS);
+  const [columns, setColumns] = useState<MixColumn[]>(() => cloneColumns(INITIAL_COLUMNS));
   const [isPredicting, setIsPredicting] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [lastPrediction, setLastPrediction] = useState<PredictionResult | null>(null);
   const [notification, setNotification] = useState<{ message: string, type: 'error' | 'success' } | null>(null);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [expandedPanel, setExpandedPanel] = useState<'chart' | 'results' | null>(null);
 
   // New State for Parameter Selection
   const [targetParam, setTargetParam] = useState<'vma' | 'rutDepth' | 'ctIndex' | 'iFit'>('vma');
@@ -38,9 +67,17 @@ const App: React.FC = () => {
           newValues[rowId] = value;
         }
 
+        // Clear predicted flag when the user manually edits a value
+        let predicted = col.predictedKeys;
+        if (predicted && predicted.has(rowId)) {
+          predicted = new Set(predicted);
+          predicted.delete(rowId);
+        }
+
         return {
           ...col,
           values: newValues,
+          predictedKeys: predicted,
         };
       })
     );
@@ -67,71 +104,27 @@ const App: React.FC = () => {
   };
 
   const handleAddColumn = () => {
+    const nextTrialNumber = columns.reduce((max, col) => {
+      const match = col.name.match(/trial\s+(\d+)/i);
+      if (!match) return max;
+      const parsed = parseInt(match[1], 10);
+      return Number.isNaN(parsed) ? max : Math.max(max, parsed);
+    }, 0) + 1;
+
     const newId = `design_${Date.now()}`;
     const newCol: MixColumn = {
       id: newId,
-      name: `Lab Trial ${columns.length}`,
+      name: `Trial ${nextTrialNumber}`,
       type: 'reference',
       isSelected: true,
       values: {},
     };
 
-    // Insert before the Target column (which is usually last)
-    const targetIndex = columns.findIndex(c => c.type === 'target');
-    const newColumns = [...columns];
-    if (targetIndex !== -1) {
-      newColumns.splice(targetIndex, 0, newCol);
-    } else {
-      newColumns.push(newCol);
-    }
-    setColumns(newColumns);
+    setColumns([...columns, newCol]);
   };
 
   const handleRemoveColumn = (colId: string) => {
     setColumns((prev) => prev.filter((col) => col.id !== colId));
-  };
-
-  const handlePromoteTarget = () => {
-    setColumns((prev) => {
-      // Find current target
-      const targetIdx = prev.findIndex(c => c.type === 'target');
-      if (targetIdx === -1) return prev; // Should not happen
-
-      const oldTarget = prev[targetIdx];
-
-      // Convert to Reference
-      const promotedCol: MixColumn = {
-        ...oldTarget,
-        id: `trial_${Date.now()}`, // Unique ID
-        type: 'reference',
-        name: `${oldTarget.name} (Verified)`, // Suffix to indicate change
-        isSelected: true,
-        values: {
-          ...oldTarget.values,
-          // Store the predicted value separately so we can display it alongside the input for "Measured"
-          [`${targetParam}_predicted`]: oldTarget.values[targetParam]
-        }
-      };
-
-      // Create New Target
-      const newTarget: MixColumn = {
-        ...oldTarget, // Copy properties to keep user context if desired
-        id: `target_${Date.now()}`,
-        type: 'target',
-        name: 'New Prediction Target',
-        isSelected: true,
-        // Deep copy values to avoid ref issues
-        values: { ...oldTarget.values }
-      };
-
-      // Remove old target, Insert Promoted, Insert New Target
-      const newCols = [...prev];
-      newCols.splice(targetIdx, 1, promotedCol, newTarget);
-
-      return newCols;
-    });
-
-    setNotification({ message: "Target saved as Reference Trial. Please verify measured values.", type: 'success' });
   };
 
   const handleShare = () => {
@@ -142,7 +135,7 @@ const App: React.FC = () => {
   const handleSave = async () => {
     try {
       const suggestedName = "asphalt_prediction_data.json";
-      const dataStr = JSON.stringify(columns, null, 2);
+      const dataStr = serializeColumns(columns);
 
       // Try File System Access API
       if ('showSaveFilePicker' in window) {
@@ -204,7 +197,7 @@ const App: React.FC = () => {
           throw new Error("Invalid format");
         }
 
-        setColumns(parsed);
+        setColumns(deserializeColumns(parsed));
         setNotification({ message: 'Project loaded successfully', type: 'success' });
       } catch (err) {
         console.error(err);
@@ -268,8 +261,46 @@ const App: React.FC = () => {
     setNotification({ message: 'Exported to Excel successfully', type: 'success' });
   };
 
+  const handleResetAllData = () => {
+    setColumns(cloneColumns(INITIAL_COLUMNS));
+    setTargetParam('vma');
+    setLastPrediction(null);
+    setNotification({ message: 'All data reset to default.', type: 'success' });
+    setIsResetConfirmOpen(false);
+  };
+
+  // Prediction flow: validate gradation → select model → run centered deviation regression → display result.
   const handlePredict = async () => {
     if (!targetCol) return;
+
+    // Validate gradation monotonicity on all active columns before running the model.
+    const activeCols = [targetCol, ...columns.filter(c => c.type === 'reference' && c.isSelected)];
+    const gradationErrors = activeCols.flatMap(col => validateGradation(col));
+    if (gradationErrors.length > 0) {
+      setNotification({ message: `Gradation error: ${gradationErrors[0]}`, type: 'error' });
+      return;
+    }
+
+    // Check for optional fields that were toggled on but left empty.
+    // An empty FAA or empty reference measured value would silently be ignored by the
+    // model (treated as "not provided"), which is confusing. Warn the user instead.
+    const paramLabels: Record<string, string> = { vma: 'VMA', rutDepth: 'Rut Depth', ctIndex: 'CTIndex', iFit: 'FI' };
+    for (const col of activeCols) {
+      if (col.values['faa'] !== undefined && col.values['faa'].trim() === '') {
+        setNotification({
+          message: `FAA in ${col.name} is enabled but empty. Enter a value or tap the trash icon to remove it.`,
+          type: 'error'
+        });
+        return;
+      }
+      if (col.type === 'reference' && col.values[targetParam] !== undefined && col.values[targetParam].trim() === '') {
+        setNotification({
+          message: `${paramLabels[targetParam]} in ${col.name} is enabled but empty. Enter a measured value or tap the trash icon to remove it.`,
+          type: 'error'
+        });
+        return;
+      }
+    }
 
     setIsPredicting(true);
     setNotification(null);
@@ -290,19 +321,21 @@ const App: React.FC = () => {
       const finalResult: PredictionResult = {
         ...targetResult,
         [targetParam]: rawPrediction,
-        explanation: `Prediction based on ${targetResult.usedModel}. Using ${refCols.length} reference trial(s) for centering calibration.`
       };
 
-      // Update the Target Column
+      // Update the Target Column and mark the value as predicted
       setColumns((prev) =>
         prev.map((col) => {
           if (col.type !== 'target') return col;
+          const predicted = new Set(col.predictedKeys || []);
+          predicted.add(targetParam);
           return {
             ...col,
             values: {
               ...col.values,
               [targetParam]: rawPrediction.toFixed(1),
             },
+            predictedKeys: predicted,
           };
         })
       );
@@ -319,7 +352,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col font-sans text-slate-900">
+    <div className="min-h-screen bg-gray-100 flex flex-col font-sans text-[15px] md:text-base text-slate-900">
       <input
         type="file"
         ref={fileInputRef}
@@ -331,9 +364,9 @@ const App: React.FC = () => {
       <header className="bg-white border-b border-slate-300 sticky top-0 z-40">
         <div className="max-w-[1800px] mx-auto px-4 lg:px-6 h-auto md:h-20 flex flex-col md:flex-row items-center justify-between py-4 md:py-0 gap-4">
           <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-center md:text-left">
-            <h1 className="font-bold text-lg md:text-xl tracking-tight text-slate-900 leading-none">Asphalt Parameter Predictor</h1>
+            <h1 className="font-bold text-xl md:text-2xl tracking-tight text-slate-900 leading-none">Volumetric and Mixture Performance Prediction Tool</h1>
             <div className="hidden md:block h-6 w-px bg-slate-300"></div>
-            <p className="text-[10px] md:text-sm text-slate-500 font-mono font-medium">Predict VMA, IDEAL-CT, Rut Depth, I-FIT</p>
+            <p className="text-xs md:text-base text-slate-500 font-mono font-medium">Predict VMA, CTIndex, FI, Rut Depth</p>
           </div>
           <div className="flex items-center gap-1 md:gap-2">
             {/* Standard App Toolkit */}
@@ -391,9 +424,9 @@ const App: React.FC = () => {
           <div className="flex-1 flex flex-col">
             <MixMatrix
               columns={columns}
+              targetParam={targetParam}
               onUpdateValue={handleUpdateValue}
               onBulkUpdate={handleBulkUpdate}
-              onPromoteTarget={handlePromoteTarget}
               onToggleColumn={handleToggleColumn}
               onAddColumn={handleAddColumn}
               onRemoveColumn={handleRemoveColumn}
@@ -407,7 +440,7 @@ const App: React.FC = () => {
           {/* 1. Action Card */}
           <div className="bg-white p-4 border border-slate-300">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <h2 className="text-sm font-bold uppercase tracking-widest text-slate-900 flex items-center gap-2">
+              <h2 className="text-base font-bold uppercase tracking-widest text-slate-900 flex items-center gap-2">
                 <Calculator size={16} className="text-orange-600" />
                 Control Panel
               </h2>
@@ -422,9 +455,9 @@ const App: React.FC = () => {
                 onChange={(val) => setTargetParam(val as any)}
                 options={[
                   { value: 'vma', label: 'VMA', subLabel: 'Voids in Mineral Aggregate (%)' },
-                  { value: 'ctIndex', label: 'IDEAL-CT', subLabel: 'Cracking Tolerance Index' },
+                  { value: 'ctIndex', label: 'CTIndex', subLabel: 'Cracking Tolerance Index' },
+                  { value: 'iFit', label: 'FI', subLabel: 'Flexibility Index' },
                   { value: 'rutDepth', label: 'Rut Depth', subLabel: 'Hamburg Wheel Test (mm)' },
-                  { value: 'iFit', label: 'I-FIT', subLabel: 'Flexibility Index' },
                 ]}
               />
             </div>
@@ -432,7 +465,7 @@ const App: React.FC = () => {
             <button
               onClick={handlePredict}
               disabled={isPredicting}
-              className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white font-bold py-2 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
+              className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-base uppercase tracking-wide rounded-sm"
             >
               {isPredicting ? (
                 <>
@@ -447,31 +480,139 @@ const App: React.FC = () => {
               )}
             </button>
 
+            <button
+              onClick={() => setIsResetConfirmOpen(true)}
+              disabled={isPredicting}
+              className="w-full mt-2 border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 font-semibold py-2 px-4 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
+            >
+              <RotateCcw size={14} />
+              Reset All Data
+            </button>
+
           </div>
 
           {/* 2. Results Dashboard */}
-          <ResultsDashboard
-            result={lastPrediction}
-            targetName={targetCol?.name || "Target Design"}
-            isLoading={isPredicting}
-          />
+          <div className="relative group/panel">
+            {lastPrediction && (
+              <button
+                onClick={() => setExpandedPanel('results')}
+                className="absolute top-3 right-3 z-10 p-1.5 rounded-sm bg-white/80 border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all opacity-0 group-hover/panel:opacity-100"
+                title="Expand results"
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
+            <ResultsDashboard
+              result={lastPrediction}
+              targetName={targetCol?.name || "Target Design"}
+              isLoading={isPredicting}
+            />
+          </div>
 
           {/* 3. Visualization */}
-          <GradationChart columns={columns} />
+          <div className="relative group/panel">
+            <button
+              onClick={() => setExpandedPanel('chart')}
+              className="absolute top-3 right-3 z-10 p-1.5 rounded-sm bg-white/80 border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all opacity-0 group-hover/panel:opacity-100"
+              title="Expand chart"
+            >
+              <Maximize2 size={14} />
+            </button>
+            <GradationChart columns={columns} />
+          </div>
 
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 mt-auto py-4">
-        <div className="w-full flex items-center justify-center gap-3 opacity-90 hover:opacity-100 transition-opacity">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Powered by</span>
-          <img src="/omix_logo_rect.png" alt="OMIX" className="h-10 w-auto object-contain" />
+      <footer className="bg-slate-900 mt-auto">
+        <div className="max-w-[1800px] mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <img src="/omix_logo_rect.png" alt="OMIX" className="h-8 w-auto object-contain brightness-0 invert opacity-80" />
+            <div className="h-5 w-px bg-slate-700"></div>
+            <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Volumetric & Performance Prediction</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] text-slate-600 font-semibold uppercase tracking-widest">Partners</span>
+            <div className="bg-white/90 rounded px-4 py-2">
+              <img src="/partner_logos.png" alt="Auburn, NCAT, AAPTP" className="h-10 w-auto object-contain" />
+            </div>
+          </div>
         </div>
       </footer>
 
+      {/* Expanded Panel Modal */}
+      {expandedPanel && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setExpandedPanel(null)}
+        >
+          <div
+            className="bg-white w-full max-w-5xl max-h-[90vh] border border-slate-200 shadow-2xl rounded-sm overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50 shrink-0">
+              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">
+                {expandedPanel === 'chart' ? 'Gradation Curve (0.45 Power Chart)' : 'Prediction Results'}
+              </h3>
+              <button
+                onClick={() => setExpandedPanel(null)}
+                className="p-1.5 hover:bg-slate-200 rounded-sm text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-5">
+              {expandedPanel === 'chart' && (
+                <div className="h-[70vh]">
+                  <GradationChart columns={columns} />
+                </div>
+              )}
+              {expandedPanel === 'results' && lastPrediction && (
+                <ResultsDashboard
+                  result={lastPrediction}
+                  targetName={targetCol?.name || "Target Design"}
+                  isLoading={false}
+                  expanded
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Logic Modal */}
       <InfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />
+
+      {/* Reset Confirmation Modal */}
+      {isResetConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md border border-slate-200 shadow-2xl rounded-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 uppercase tracking-wide">Reset All Data</h3>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-slate-600 leading-relaxed">
+                This will restore the tool to its default values and clear current unsaved entries.
+              </p>
+            </div>
+            <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setIsResetConfirmOpen(false)}
+                className="px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors rounded-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetAllData}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors rounded-sm"
+              >
+                Confirm Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notifications */}
       {notification && (
