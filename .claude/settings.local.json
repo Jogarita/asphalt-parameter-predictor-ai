@@ -7,7 +7,9 @@
       "Bash(git:*)",
       "Bash(wc:*)",
       "Bash(head:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(grep:*)",
+      "Bash(cd /c/Users/josue/Documents/GitHub/asphalt-parameter-predictor && npx tsc --noEmit 2>&1)"
     ]
   }
 }

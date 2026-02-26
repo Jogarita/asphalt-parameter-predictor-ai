@@ -124,7 +124,7 @@ const GradationChart: React.FC<GradationChartProps> = ({ columns }) => {
               return (
                 <Line
                   key={col.id}
-                  type="monotone"
+                  type="linear"
                   dataKey={col.id}
                   name={col.name}
                   stroke={refColors[index % refColors.length]}
@@ -139,7 +139,7 @@ const GradationChart: React.FC<GradationChartProps> = ({ columns }) => {
 
             {/* Identity Line (Middle) - Now distinct Red */}
             <Line
-              type="monotone"
+              type="linear"
               dataKey="identity"
               name="Max Density Line (MDL)"
               stroke="#dc2626" // Red-600
@@ -158,7 +158,7 @@ const GradationChart: React.FC<GradationChartProps> = ({ columns }) => {
               return (
                 <Line
                   key={col.id}
-                  type="monotone"
+                  type="linear"
                   dataKey={col.id}
                   name={col.name}
                   stroke="#ea580c" // Orange-600

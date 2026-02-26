@@ -18,7 +18,7 @@ import ResultsDashboard from './components/ResultsDashboard';
 import { runPrediction, validateGradation } from './services/predictionModels';
 import InfoModal from './components/InfoModal';
 import Toast from './components/Toast';
-import { Calculator, ArrowRight, Loader2, Share2, Save, RotateCcw, Info, Table, FolderUp, Maximize2, X } from 'lucide-react';
+import { Calculator, ArrowRight, Loader2, Share2, Save, RotateCcw, Info, Table, FolderUp, Maximize2, X, Download, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PremiumSelect from './components/PremiumSelect';
 
@@ -115,16 +115,33 @@ const App: React.FC = () => {
     const newCol: MixColumn = {
       id: newId,
       name: `Trial ${nextTrialNumber}`,
-      type: 'reference',
+      type: 'target',
       isSelected: true,
       values: {},
     };
 
-    setColumns([...columns, newCol]);
+    // Demote the previous target to a reference
+    setColumns((prev) => [
+      ...prev.map((col) =>
+        col.type === 'target' ? { ...col, type: 'reference' as const } : col
+      ),
+      newCol,
+    ]);
   };
 
   const handleRemoveColumn = (colId: string) => {
-    setColumns((prev) => prev.filter((col) => col.id !== colId));
+    setColumns((prev) => {
+      const removedCol = prev.find((col) => col.id === colId);
+      const remaining = prev.filter((col) => col.id !== colId);
+      // If we removed the target, promote the last remaining column to target
+      if (removedCol?.type === 'target' && remaining.length > 0) {
+        const lastIdx = remaining.length - 1;
+        return remaining.map((col, i) =>
+          i === lastIdx ? { ...col, type: 'target' as const } : col
+        );
+      }
+      return remaining;
+    });
   };
 
   const handleShare = () => {
@@ -261,6 +278,142 @@ const App: React.FC = () => {
     setNotification({ message: 'Exported to Excel successfully', type: 'success' });
   };
 
+  const handleDownloadTemplate = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Instructions sheet
+    const instructions = [
+      ["Asphalt Mix Template — Instructions"],
+      [""],
+      ["1. Go to the 'Mix Data' sheet."],
+      ["2. Enter your gradation (% passing) values for each sieve size under each trial column."],
+      ["3. Enter Gsb and FAA (optional) under Volumetrics & Performance."],
+      ["4. For reference trials, enter known measured values for VMA, CTIndex, FI, and/or Rut Depth."],
+      ["5. Leave target parameter cells blank for the trial you want to predict."],
+      ["6. You can add more trial columns by inserting columns after the existing ones."],
+      ["7. Save this file and import it back into the app using the Import Excel button."],
+      ["8. The last trial column will be treated as the target; all others become references."],
+      [""],
+      ["Notes:"],
+      ["- Do not rename or reorder the rows in Column A — the app matches by label."],
+      ["- You may rename the trial columns (e.g., 'Mix A', 'Mix B')."],
+      ["- Empty cells are treated as no data provided."],
+    ];
+    const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
+    wsInstructions['!cols'] = [{ wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, wsInstructions, "Instructions");
+
+    // Mix Data sheet — blank template
+    const trialHeaders = ["Trial 1", "Trial 2", "Trial 3"];
+    const headerRow = ["Design Parameter", "Unit", ...trialHeaders];
+    const rows: string[][] = [];
+
+    rows.push(["Gradation (% Passing)", "", ...trialHeaders.map(() => "")]);
+    SIEVES.forEach(sieve => {
+      rows.push([sieve.label, "%", ...trialHeaders.map(() => "")]);
+    });
+    rows.push(["", "", ...trialHeaders.map(() => "")]);
+    rows.push(["Volumetrics & Performance", "", ...trialHeaders.map(() => "")]);
+    PROPERTIES.forEach(prop => {
+      rows.push([prop.label, prop.unit || "", ...trialHeaders.map(() => "")]);
+    });
+
+    const wsData = XLSX.utils.aoa_to_sheet([headerRow, ...rows]);
+    wsData['!cols'] = [
+      { wch: 35 },
+      { wch: 10 },
+      ...trialHeaders.map(() => ({ wch: 20 })),
+    ];
+    XLSX.utils.book_append_sheet(wb, wsData, "Mix Data");
+
+    XLSX.writeFile(wb, "Asphalt_Mix_Template.xlsx");
+    setNotification({ message: 'Template downloaded', type: 'success' });
+  };
+
+  const excelInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportExcel = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+
+        // Find the data sheet
+        const sheetName = wb.SheetNames.includes("Mix Data") ? "Mix Data" : wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        if (aoa.length < 2) {
+          setNotification({ message: 'Excel file appears empty', type: 'error' });
+          return;
+        }
+
+        // Build label → id lookup from constants
+        const labelToId: Record<string, string> = {};
+        SIEVES.forEach(s => { labelToId[s.label] = s.id; });
+        PROPERTIES.forEach(p => { labelToId[p.label] = p.id; });
+
+        // Detect trial columns from header row (index 2+)
+        const headerRowData = aoa[0];
+        const trialIndices: number[] = [];
+        const trialNames: string[] = [];
+        for (let i = 2; i < headerRowData.length; i++) {
+          const name = String(headerRowData[i] || '').trim();
+          if (name) {
+            trialIndices.push(i);
+            trialNames.push(name);
+          }
+        }
+
+        if (trialIndices.length < 2) {
+          setNotification({ message: 'Template must have at least 2 trial columns', type: 'error' });
+          return;
+        }
+
+        // Initialize value maps for each trial
+        const trialValues: Record<string, string | undefined>[] = trialIndices.map(() => ({}));
+
+        // Parse data rows
+        for (let r = 1; r < aoa.length; r++) {
+          const row = aoa[r];
+          const label = String(row[0] || '').trim();
+          const paramId = labelToId[label];
+          if (!paramId) continue;
+
+          for (let t = 0; t < trialIndices.length; t++) {
+            const cellVal = row[trialIndices[t]];
+            if (cellVal !== undefined && cellVal !== null && String(cellVal).trim() !== '') {
+              trialValues[t][paramId] = String(cellVal).trim();
+            }
+          }
+        }
+
+        // Build MixColumn[] — last trial is target, others are references
+        const newColumns: MixColumn[] = trialValues.map((values, idx) => ({
+          id: `design_${Date.now()}_${idx}`,
+          name: trialNames[idx],
+          type: idx === trialValues.length - 1 ? 'target' as const : 'reference' as const,
+          isSelected: true,
+          values,
+        }));
+
+        setColumns(newColumns);
+        setLastPrediction(null);
+        setNotification({ message: `Imported ${newColumns.length} trials — ready to run model`, type: 'success' });
+      } catch (err) {
+        console.error(err);
+        setNotification({ message: 'Failed to parse Excel file', type: 'error' });
+      } finally {
+        if (excelInputRef.current) excelInputRef.current.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const handleResetAllData = () => {
     setColumns(cloneColumns(INITIAL_COLUMNS));
     setTargetParam('vma');
@@ -360,58 +513,102 @@ const App: React.FC = () => {
         accept=".json"
         className="hidden"
       />
+      <input
+        type="file"
+        ref={excelInputRef}
+        onChange={handleImportExcel}
+        accept=".xlsx,.xls"
+        className="hidden"
+      />
       {/* Header */}
-      <header className="bg-white border-b border-slate-300 sticky top-0 z-40">
-        <div className="max-w-[1800px] mx-auto px-4 lg:px-6 h-auto md:h-20 flex flex-col md:flex-row items-center justify-between py-4 md:py-0 gap-4">
+      <header className="sticky top-0 z-40 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shadow-lg shadow-slate-900/10">
+        {/* Subtle accent line */}
+        <div className="h-[2px] bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-80"></div>
+        <div className="max-w-[1800px] mx-auto px-4 lg:px-6 h-auto md:h-20 flex flex-col md:flex-row items-center justify-between py-4 md:py-0 gap-3">
+          {/* Branding */}
           <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-center md:text-left">
-            <h1 className="font-bold text-xl md:text-2xl tracking-tight text-slate-900 leading-none">Volumetric and Mixture Performance Prediction Tool</h1>
-            <div className="hidden md:block h-6 w-px bg-slate-300"></div>
-            <p className="text-xs md:text-base text-slate-500 font-mono font-medium">Predict VMA, CTIndex, FI, Rut Depth</p>
+            <h1 className="font-semibold text-xl md:text-lg tracking-tight text-white leading-none">Volumetric & Performance Prediction</h1>
+            <div className="hidden md:block h-5 w-px bg-slate-600"></div>
+            <p className="text-xs md:text-sm text-slate-400 font-mono font-medium tracking-wide uppercase">VMA &middot; CTIndex &middot; FI &middot; Rut Depth</p>
           </div>
-          <div className="flex items-center gap-1 md:gap-2">
-            {/* Standard App Toolkit */}
-            <button
-              onClick={() => setIsInfoOpen(true)}
-              className="p-1.5 md:p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-orange-600 transition-colors"
-              title="How it Works"
-            >
-              <Info size={18} className="md:w-5 md:h-5" />
-            </button>
-            <div className="h-6 w-px bg-slate-300 mx-1"></div>
 
-            <button
-              onClick={handleLoadClick}
-              className="p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-blue-600 transition-colors"
-              title="Load Project (JSON)"
-            >
-              <FolderUp size={20} />
-            </button>
+          {/* Toolbar */}
+          <div className="flex items-center gap-0.5 bg-white/[0.07] backdrop-blur-sm rounded-lg px-1.5 py-1 border border-white/[0.08]">
+            <div className="relative group">
+              <button
+                onClick={() => setIsInfoOpen(true)}
+                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
+              >
+                <Info size={16} className="md:w-[18px] md:h-[18px]" />
+              </button>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">How it Works</span>
+            </div>
 
-            <button
-              onClick={handleSave}
-              className="p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-orange-600 transition-colors"
-              title="Save Project (JSON)"
-            >
-              <Save size={20} />
-            </button>
+            <div className="h-5 w-px bg-white/10 mx-0.5"></div>
 
-            <button
-              onClick={handleExportExcel}
-              className="p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-green-600 transition-colors"
-              title="Export to Excel"
-            >
-              <Table size={20} />
-            </button>
+            <div className="relative group">
+              <button
+                onClick={handleLoadClick}
+                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-blue-400 hover:bg-white/10 transition-all duration-200"
+              >
+                <FolderUp size={17} />
+              </button>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Load Project</span>
+            </div>
 
-            <div className="h-6 w-px bg-slate-300 mx-1"></div>
+            <div className="relative group">
+              <button
+                onClick={handleSave}
+                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
+              >
+                <Save size={17} />
+              </button>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Save Project</span>
+            </div>
 
-            <button
-              onClick={handleShare}
-              className="p-1.5 md:p-2 hover:bg-slate-100 rounded text-slate-600 hover:text-orange-600 transition-colors"
-              title="Share Project"
-            >
-              <Share2 size={18} className="md:w-5 md:h-5" />
-            </button>
+            <div className="h-5 w-px bg-white/10 mx-0.5"></div>
+
+            <div className="relative group">
+              <button
+                onClick={handleExportExcel}
+                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-white/10 transition-all duration-200"
+              >
+                <Table size={17} />
+              </button>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Export to Excel</span>
+            </div>
+
+            <div className="relative group">
+              <button
+                onClick={handleDownloadTemplate}
+                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-white/10 transition-all duration-200"
+              >
+                <Download size={17} />
+              </button>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Download Template</span>
+            </div>
+
+            <div className="relative group">
+              <button
+                onClick={() => excelInputRef.current?.click()}
+                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-blue-400 hover:bg-white/10 transition-all duration-200"
+              >
+                <Upload size={17} />
+              </button>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Import Excel</span>
+            </div>
+
+            <div className="h-5 w-px bg-white/10 mx-0.5"></div>
+
+            <div className="relative group">
+              <button
+                onClick={handleShare}
+                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
+              >
+                <Share2 size={16} className="md:w-[18px] md:h-[18px]" />
+              </button>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Copy Link</span>
+            </div>
           </div>
         </div>
       </header>

@@ -5,12 +5,9 @@ import { SIEVES } from '../constants';
 // --- Types ---
 type Coefficients = Record<string, number>;
 
-// --- Constants: Regression Coefficients ---
-// Extracted from 'Predicted_Measured VMA.xlsm'. These are empirical constants
-// derived from laboratory data — do not modify without re-deriving from research data.
+// --- Constants: Coefficients ---
+// Extracted from 'Predicted_Measured VMA.xlsm'
 
-// VMA Model 1 — used when the gradation plots ABOVE the 0.45 power identity line.
-// Uses derived aggregate ratios (CA ratio, FAC ratio) instead of raw sieve values.
 const VMA_MODEL_1_COEFFS: Coefficients = {
     intercept: 0,
     sieve_2_36: 0.2158, // No.8
@@ -18,7 +15,6 @@ const VMA_MODEL_1_COEFFS: Coefficients = {
     new_fac_ratio: -1.55,
 };
 
-// VMA Model 2 — used when the gradation plots BELOW the identity line (with FAA input).
 const VMA_MODEL_2_COEFFS: Coefficients = {
     intercept: 0.0282,
     sieve_12_5: 0.315, // 1/2 in
@@ -34,7 +30,6 @@ const VMA_MODEL_2_COEFFS: Coefficients = {
     faa: 0.135,
 };
 
-// VMA Model 2 (No FAA) — same as Model 2 but without FAA input.
 const VMA_MODEL_2_NO_FAA_COEFFS: Coefficients = {
     intercept: 0.026,
     sieve_12_5: 0.362,
@@ -49,7 +44,6 @@ const VMA_MODEL_2_NO_FAA_COEFFS: Coefficients = {
     gsb: 86, // "Gsb: 86" from dump
 };
 
-// Rut Depth model — predicts Hamburg Wheel Tracking rut depth (with FAA input).
 const RUT_DEPTH_COEFFS: Coefficients = {
     intercept: -0.0091,
     sieve_12_5: 0.331,
@@ -65,7 +59,6 @@ const RUT_DEPTH_COEFFS: Coefficients = {
     faa: 0.58
 };
 
-// Rut Depth model (No FAA).
 const RUT_DEPTH_NO_FAA_COEFFS: Coefficients = {
     intercept: -0.0136,
     sieve_12_5: 0.603,
@@ -80,7 +73,6 @@ const RUT_DEPTH_NO_FAA_COEFFS: Coefficients = {
     gsb: -35.1
 };
 
-// CTIndex model — predicts Cracking Tolerance Index (with FAA input).
 const CT_INDEX_COEFFS: Coefficients = {
     intercept: 0.04,
     sieve_12_5: 4.05,
@@ -96,7 +88,6 @@ const CT_INDEX_COEFFS: Coefficients = {
     faa: -15.22
 };
 
-// CTIndex model (No FAA).
 const CT_INDEX_NO_FAA_COEFFS: Coefficients = {
     intercept: -0.13,
     sieve_12_5: -1.9,
@@ -112,7 +103,6 @@ const CT_INDEX_NO_FAA_COEFFS: Coefficients = {
     faa: 0
 };
 
-// I-FIT Flexibility Index model (with FAA input).
 const IFIT_COEFFS: Coefficients = {
     intercept: 0.016,
     sieve_12_5: 0.625,
@@ -128,7 +118,6 @@ const IFIT_COEFFS: Coefficients = {
     faa: 0.03
 };
 
-// I-FIT Flexibility Index model (No FAA).
 const IFIT_NO_FAA_COEFFS: Coefficients = {
     intercept: 0.017,
     sieve_12_5: 0.637,
@@ -189,24 +178,19 @@ const computeMeanColumn = (columns: MixColumn[]): MixColumn => {
 };
 
 /*
-    Centered Deviation Regression — the core prediction approach.
-
-    Instead of feeding raw sieve/property values into the regression, this method
-    computes how much each input for the target trial *deviates* from the global
-    mean of all participating trials (references + target). The regression
-    coefficients then weight these deviations to produce a predicted deviation
-    of the output parameter.
-
-    Plain-English steps:
-      1. For each input variable, compute the mean across all trials.
-      2. Compute the target's deviation from that mean.
-      3. Multiply each deviation by its regression coefficient and sum them up.
-      4. The result is a "centered" predicted value that must later be
-         reconstructed into an absolute prediction (see reconstruction formula
-         in runPrediction).
-
-    Verified against Excel formula:
+    HELPER: Create a "Deviation Column"
+    Dev_i = Value_i - Mean_i
+    
+    Verified against User Excel Formula:
     =(($B$17+(D3-AVERAGE(B3:D3))*$B$18+...)*3+C14+B14)/2
+    
+    Mapping logic implemented below:
+    - Target: D (Input Trial for Prediction)
+    - Refs: B, C (Reference Trials)
+    - Mean: AVERAGE(B3:D3) -> Average of Target + All Refs
+    - Deviation (Delta): D3 - Mean
+    - Input to Regression: Delta
+    - Final Reconstruction: ( (Sum_Deltas_Weighted + Intercept) * N + Sum_Measured_Refs ) / (N - 1)
 */
 const applyCenteredModel = (
     target: MixColumn,
@@ -282,6 +266,50 @@ const isAboveIdentityLine = (col: MixColumn): boolean => {
     });
 };
 
+/* 
+    DEPRECATED: Simple applyModel for raw prediction.
+    Kept if needed for un-referenced prediction, but user logic mandates centered approach.
+*/
+const applyModel = (col: MixColumn, coeffs: Coefficients): number => {
+    let result = coeffs.intercept || 0;
+    SIEVES.forEach(s => {
+        if (coeffs[s.id] !== undefined) result += coeffs[s.id] * getVal(col, s.id);
+    });
+    if (coeffs.gsb) result += coeffs.gsb * getVal(col, 'gsb');
+    if (coeffs.faa) result += coeffs.faa * getVal(col, 'faa');
+    if (coeffs.new_ca_ratio) result += coeffs.new_ca_ratio * calculateCARatio(col);
+    if (coeffs.new_fac_ratio) result += coeffs.new_fac_ratio * calculateFACRatio(col);
+    return result;
+};
+
+
+/**
+ * Validates that a column's gradation values are monotonically non-increasing
+ * (% passing should decrease or stay equal as sieve size decreases).
+ * Returns an array of error messages (empty if valid).
+ */
+export const validateGradation = (col: MixColumn): string[] => {
+    const errors: string[] = [];
+    let prevVal: number | null = null;
+    let prevLabel = '';
+
+    for (const sieve of SIEVES) {
+        const raw = col.values[sieve.id];
+        if (raw === undefined || raw === '') continue;
+        const val = parseFloat(raw);
+        if (isNaN(val)) continue;
+
+        if (prevVal !== null && val > prevVal) {
+            errors.push(
+                `${col.name}: ${sieve.label} (${val}%) is greater than ${prevLabel} (${prevVal}%). Gradation must be non-increasing.`
+            );
+            break; // Report one error per column
+        }
+        prevVal = val;
+        prevLabel = sieve.label;
+    }
+    return errors;
+};
 
 // --- EXPORTED FUNCTIONS ---
 
@@ -290,11 +318,6 @@ export const getModelType = (grade: MixColumn, hasFaa: boolean): string => {
     return hasFaa ? 'VMA-Second Model' : 'VMA-Second Model (No FAA)';
 };
 
-// Main prediction entry point. Steps:
-//   1. Filter references to those with a measured value for the target parameter.
-//   2. Choose the correct model (FAA vs No-FAA; for VMA, also identity-line check).
-//   3. Validate that all required inputs are present.
-//   4. Run centered deviation regression and reconstruct the absolute prediction.
 export const runPrediction = (
     target: MixColumn,
     parameter: 'vma' | 'rutDepth' | 'ctIndex' | 'iFit',
@@ -308,9 +331,7 @@ export const runPrediction = (
     });
 
     if (validRefs.length === 0) {
-        const paramLabels: Record<string, string> = { vma: 'VMA', rutDepth: 'Rut Depth', ctIndex: 'CTIndex', iFit: 'FI' };
-        const label = paramLabels[parameter] || parameter;
-        throw new Error(`No reference trial has a measured ${label} value. Add a measured ${label} to at least one reference trial.`);
+        throw new Error(`Cannot predict: At least one trial with a measured ${parameter} is required.`);
     }
 
     // 2. Determine whether to use FAA-inclusive or FAA-free model.
@@ -321,8 +342,6 @@ export const runPrediction = (
         if (raw === undefined || raw === '') return false;
         return !isNaN(parseFloat(raw));
     });
-    // Model selection: VMA uses the 0.45 power identity-line check to pick Model 1 vs 2.
-    // All other parameters simply branch on whether FAA is available.
     let coeffs: Coefficients | null = null;
     let modelName = '';
 
@@ -368,10 +387,8 @@ export const runPrediction = (
 
     if (!coeffs) throw new Error("No model found");
 
-    // 3. Validation: Block prediction if required inputs are missing.
-    // Required keys are derived from the selected model's coefficients — e.g. VMA Model 1
-    // does not use Gsb, so it won't be required for that model.
-    const requiredInputKeys = new Set<string>();
+    // 3. Validation: Block prediction if required gradation/Gsb values are missing
+    const requiredInputKeys = new Set<string>(['gsb']);
     Object.keys(coeffs).forEach(key => {
         if (key === 'intercept' || key === 'faa' || key === 'new_ca_ratio' || key === 'new_fac_ratio') return;
         requiredInputKeys.add(key);
@@ -403,35 +420,25 @@ export const runPrediction = (
         });
 
         if (missingInputs.length === 0) return;
-
-        // Build a friendly summary: separate sieve values from named properties
-        const missingSieves = missingInputs.filter(k => k.startsWith('sieve_'));
-        const missingProps = missingInputs.filter(k => !k.startsWith('sieve_')).map(k => keyToLabel.get(k) || k);
-        const parts: string[] = [];
-        if (missingSieves.length > 0) {
-            parts.push(`${missingSieves.length} sieve value${missingSieves.length > 1 ? 's' : ''}`);
-        }
-        if (missingProps.length > 0) {
-            parts.push(missingProps.join(', '));
-        }
-        missingByTrial.push(`${col.name} is missing ${parts.join(' and ')}`);
+        const missingLabels = missingInputs.map((k) => keyToLabel.get(k) || k);
+        missingByTrial.push(`${col.name}: ${missingLabels.join(', ')}`);
     });
 
     if (missingByTrial.length > 0) {
-        throw new Error(missingByTrial.join('. ') + '.');
+        throw new Error(`Missing required inputs in selected trials. ${missingByTrial.join(' | ')}`);
     }
 
     // 4. Perform Prediction
     let predictedVal = 0;
 
-    // Reconstruction formula: converts the centered regression output back into
-    // an absolute value. Because the regression predicts a deviation from the
-    // global mean, we combine it with the known measured values from reference
-    // trials to solve for the unknown target value:
-    //   P_target = (N * regOut + Sum(P_measured_refs)) / (N - 1)
-    // where N = total number of trials (references + target).
-    const N = validRefs.length + 1;
+    // Implementation of User's Logic:
+    // P_target = ( N * RegOut + Sum(P_ref) ) / (N - 1)
+    const N = validRefs.length + 1; // Target + Valid Refs
+
+    // Calculate RegOut using Centered Deviation Logic
     const regOut = applyCenteredModel(target, validRefs, coeffs);
+
+    // Calculate Sum of Measured Reference Values
     const sumMeasured = validRefs.reduce((sum, r) => sum + getVal(r, parameter), 0);
 
     predictedVal = ((regOut * N) + sumMeasured) / (N - 1);
@@ -440,32 +447,4 @@ export const runPrediction = (
         [parameter]: predictedVal,
         usedModel: modelName
     };
-};
-
-// Validates that gradation values decrease monotonically from coarsest to finest sieve.
-// In a valid gradation, finer sieves always have equal or lower "% passing" values.
-// Skips pairs where either value is blank (partial entry is allowed).
-export const validateGradation = (col: MixColumn): string[] => {
-    const errors: string[] = [];
-
-    for (let i = 0; i < SIEVES.length - 1; i++) {
-        const coarser = SIEVES[i];
-        const finer = SIEVES[i + 1];
-        const coarserRaw = col.values[coarser.id];
-        const finerRaw = col.values[finer.id];
-
-        if (coarserRaw === undefined || coarserRaw === '' || finerRaw === undefined || finerRaw === '') continue;
-
-        const coarserVal = parseFloat(coarserRaw);
-        const finerVal = parseFloat(finerRaw);
-        if (isNaN(coarserVal) || isNaN(finerVal)) continue;
-
-        if (finerVal > coarserVal) {
-            errors.push(
-                `${col.name}: ${finer.label} (${finerVal}%) is greater than ${coarser.label} (${coarserVal}%)`
-            );
-        }
-    }
-
-    return errors;
 };
