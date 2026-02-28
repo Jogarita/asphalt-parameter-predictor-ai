@@ -67,10 +67,39 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
       <div className="overflow-x-auto flex-1">
         <table className="min-w-full h-full text-base text-left border-collapse">
           <thead className="bg-slate-100 text-slate-800 font-semibold sticky top-0 z-30 shadow-[0_1px_0_0_rgba(203,213,225,1)]">
+            {/* Group header row */}
             <tr>
-              <th className="p-2.5 w-[200px] min-w-[200px] max-w-[200px] sticky left-0 bg-slate-100 border-r border-slate-300 z-40 text-sm font-bold uppercase tracking-widest text-slate-700">
-                Design Parameter
+              <th className="w-[200px] min-w-[200px] max-w-[200px] sticky left-0 bg-slate-100 border-r border-slate-300 z-40" rowSpan={2}>
+                <div className="p-2.5 text-sm font-bold uppercase tracking-widest text-slate-700">
+                  Design Parameter
+                </div>
               </th>
+              {columns.filter(c => c.type === 'reference').length > 0 && (
+                <th
+                  colSpan={columns.filter(c => c.type === 'reference').length}
+                  className="px-3 py-1.5 text-center border-r border-slate-300 border-b border-b-slate-200 bg-slate-50"
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Existing Mix Designs</span>
+                </th>
+              )}
+              {columns.some(c => c.type === 'target') && (
+                <th className="px-3 py-1.5 text-center border-r border-slate-300 border-b border-b-orange-200 bg-orange-50/60">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-orange-500">New Trial Design</span>
+                </th>
+              )}
+              <th className="w-[120px] min-w-[120px] border-r border-slate-300 bg-slate-50/50" rowSpan={2}>
+                <div className="p-3">
+                  <button
+                    onClick={onAddColumn}
+                    className="w-full flex items-center justify-center gap-1 text-slate-400 hover:text-blue-700 text-[10px] font-bold uppercase tracking-wide bg-transparent hover:bg-blue-50 py-1.5 rounded-sm border border-dashed border-slate-300 hover:border-blue-200 transition-all opacity-60 hover:opacity-100"
+                  >
+                    <Plus size={12} /> Add
+                  </button>
+                </div>
+              </th>
+            </tr>
+            {/* Individual column headers */}
+            <tr>
               {columns.map((col) => (
                 <th
                   key={col.id}
@@ -113,14 +142,6 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
                   </div>
                 </th>
               ))}
-              <th className="p-3 w-[120px] min-w-[120px] align-top border-r border-slate-300 bg-slate-50/50">
-                <button
-                  onClick={onAddColumn}
-                  className="w-full flex items-center justify-center gap-1 text-slate-400 hover:text-blue-700 text-[10px] font-bold uppercase tracking-wide bg-transparent hover:bg-blue-50 py-1.5 rounded-sm border border-dashed border-slate-300 hover:border-blue-200 transition-all opacity-60 hover:opacity-100"
-                >
-                  <Plus size={12} /> Add
-                </button>
-              </th>
             </tr>
           </thead>
 
