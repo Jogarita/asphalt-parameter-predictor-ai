@@ -107,37 +107,42 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
                     }`}
                 >
                   <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-start">
-                      <span className="text-xs font-bold uppercase tracking-widest text-slate-500 opacity-90">
-                        Trial
-                      </span>
-                      {col.type === 'reference' && columns.filter(c => c.type === 'reference').length > 1 && (
-                        <button
-                          onClick={() => onRemoveColumn(col.id)}
-                          className="text-slate-400 hover:text-red-500 transition-colors"
-                          title="Remove Design"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={col.name}
-                      onChange={(e) => onUpdateValue(col.id, 'name', e.target.value)}
-                      className="bg-transparent font-bold text-base focus:outline-none border-b border-transparent focus:border-orange-400 w-full"
-                    />
-
-                    {col.type === 'reference' && (
-                      <label className="flex items-center gap-2 mt-1 cursor-pointer select-none">
+                    {col.type === 'reference' ? (
+                      <>
+                        <div className="flex justify-between items-start">
+                          <span className="text-xs font-bold uppercase tracking-widest text-slate-500 opacity-90">
+                            Trial
+                          </span>
+                          {columns.filter(c => c.type === 'reference').length > 1 && (
+                            <button
+                              onClick={() => onRemoveColumn(col.id)}
+                              className="text-slate-400 hover:text-red-500 transition-colors"
+                              title="Remove Design"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                         <input
-                          type="checkbox"
-                          checked={col.isSelected}
-                          onChange={() => onToggleColumn(col.id)}
-                          className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500 rounded-none bg-white"
+                          type="text"
+                          value={col.name}
+                          onChange={(e) => onUpdateValue(col.id, 'name', e.target.value)}
+                          className="bg-transparent font-bold text-base focus:outline-none border-b border-transparent focus:border-orange-400 w-full"
                         />
-                        <span className="text-xs font-normal text-slate-500">Include in Model</span>
-                      </label>
+                        <label className="flex items-center gap-2 mt-1 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={col.isSelected}
+                            onChange={() => onToggleColumn(col.id)}
+                            className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500 rounded-none bg-white"
+                          />
+                          <span className="text-xs font-normal text-slate-500">Include in Model</span>
+                        </label>
+                      </>
+                    ) : (
+                      <span className="text-xs font-bold uppercase tracking-widest text-orange-500 opacity-90 py-1">
+                        To Predict
+                      </span>
                     )}
                   </div>
                 </th>
@@ -204,6 +209,9 @@ const MixMatrix: React.FC<MixMatrixProps> = ({
                 <td className="p-0 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-b border-slate-300/50 z-20">
                   <div className="flex items-center gap-1.5 h-full px-3 py-1 font-medium text-slate-700 text-xs">
                     <span>{prop.label}</span>
+                    {prop.id === 'gsb' && (
+                      <span className="text-[9px] bg-red-50 border border-red-200 text-red-500 px-1.5 py-0.5 rounded-full font-semibold leading-none">Required</span>
+                    )}
                     {prop.isOptional && (
                       <span className="text-[9px] bg-blue-50 border border-blue-200 text-blue-500 px-1.5 py-0.5 rounded-full font-semibold leading-none">Optional</span>
                     )}

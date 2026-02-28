@@ -3,7 +3,6 @@ import { Sieve, MixProperty, MixColumn } from './types';
 // Standard sieve sizes used in asphalt gradation analysis (ASTM C136).
 // Listed coarsest to finest. Values in the data represent "% passing" each sieve.
 export const SIEVES: Sieve[] = [
-  { id: 'sieve_25_0', label: '25.0 mm (1")', sizeMm: 25.0 },
   { id: 'sieve_19_0', label: '19.0 mm (3/4")', sizeMm: 19.0 },
   { id: 'sieve_12_5', label: '12.5 mm (1/2")', sizeMm: 12.5 },
   { id: 'sieve_9_5', label: '9.5 mm (3/8")', sizeMm: 9.5 },
@@ -73,7 +72,6 @@ export const INITIAL_COLUMNS: MixColumn[] = [
     type: 'reference',
     isSelected: true,
     values: {
-      sieve_25_0: '100',
       sieve_19_0: '100',
       sieve_12_5: '95',
       sieve_9_5: '85',
@@ -84,16 +82,16 @@ export const INITIAL_COLUMNS: MixColumn[] = [
       sieve_0_300: '17',
       sieve_0_150: '12',
       sieve_0_075: '8.5',
+      gsb: '2.650',
       vma: '15.8'
     },
   },
   {
     id: 'target_1',
-    name: 'Trial 2',
+    name: 'New Trial',
     type: 'target',
     isSelected: true,
     values: {
-      sieve_25_0: '100',
       sieve_19_0: '100',
       sieve_12_5: '93',
       sieve_9_5: '83',
@@ -104,6 +102,7 @@ export const INITIAL_COLUMNS: MixColumn[] = [
       sieve_0_300: '16',
       sieve_0_150: '12',
       sieve_0_075: '8.8',
+      gsb: '2.650',
       vma: '',
       ctIndex: '',
       rutDepth: '',

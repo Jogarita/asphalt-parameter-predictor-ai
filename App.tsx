@@ -104,29 +104,31 @@ const App: React.FC = () => {
   };
 
   const handleAddColumn = () => {
-    const nextTrialNumber = columns.reduce((max, col) => {
-      const match = col.name.match(/trial\s+(\d+)/i);
-      if (!match) return max;
-      const parsed = parseInt(match[1], 10);
-      return Number.isNaN(parsed) ? max : Math.max(max, parsed);
-    }, 0) + 1;
+    // Demote the previous target to a reference with the next available trial number
+    setColumns((prev) => {
+      const refNumbers = new Set(prev.filter(c => c.type === 'reference').map(col => {
+        const match = col.name.match(/trial\s+(\d+)/i);
+        return match ? parseInt(match[1], 10) : NaN;
+      }).filter(n => !isNaN(n)));
+      let nextTrialNumber = 1;
+      while (refNumbers.has(nextTrialNumber)) nextTrialNumber++;
 
-    const newId = `design_${Date.now()}`;
-    const newCol: MixColumn = {
-      id: newId,
-      name: `Trial ${nextTrialNumber}`,
-      type: 'target',
-      isSelected: true,
-      values: {},
-    };
+      const newId = `design_${Date.now()}`;
+      const newCol: MixColumn = {
+        id: newId,
+        name: 'New Trial',
+        type: 'target',
+        isSelected: true,
+        values: {},
+      };
 
-    // Demote the previous target to a reference
-    setColumns((prev) => [
-      ...prev.map((col) =>
-        col.type === 'target' ? { ...col, type: 'reference' as const } : col
-      ),
-      newCol,
-    ]);
+      return [
+        ...prev.map((col) =>
+          col.type === 'target' ? { ...col, type: 'reference' as const, name: `Trial ${nextTrialNumber}` } : col
+        ),
+        newCol,
+      ];
+    });
   };
 
   const handleRemoveColumn = (colId: string) => {
@@ -533,81 +535,81 @@ const App: React.FC = () => {
           </div>
 
           {/* Toolbar */}
-          <div className="flex items-center gap-0.5 bg-white/[0.07] backdrop-blur-sm rounded-lg px-1.5 py-1 border border-white/[0.08]">
-            <div className="relative group">
-              <button
-                onClick={() => setIsInfoOpen(true)}
-                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
-              >
-                <Info size={16} className="md:w-[18px] md:h-[18px]" />
-              </button>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">How it Works</span>
-            </div>
+          <div className="flex items-center gap-2 md:gap-3">
+            {/* Template actions — prominent labeled buttons */}
+            <button
+              onClick={handleDownloadTemplate}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-400/25 hover:bg-emerald-500/25 hover:border-emerald-400/40 transition-all duration-200"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">Excel Template</span>
+            </button>
+
+            <button
+              onClick={() => excelInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-400/25 hover:bg-blue-500/25 hover:border-blue-400/40 transition-all duration-200"
+            >
+              <Upload size={14} />
+              <span className="hidden sm:inline">Import Excel</span>
+            </button>
 
             <div className="h-5 w-px bg-white/10 mx-0.5"></div>
 
-            <div className="relative group">
-              <button
-                onClick={handleLoadClick}
-                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-blue-400 hover:bg-white/10 transition-all duration-200"
-              >
-                <FolderUp size={17} />
-              </button>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Load Project</span>
-            </div>
+            {/* Icon toolbar */}
+            <div className="flex items-center gap-0.5 bg-white/[0.07] backdrop-blur-sm rounded-lg px-1.5 py-1 border border-white/[0.08]">
+              <div className="relative group">
+                <button
+                  onClick={() => setIsInfoOpen(true)}
+                  className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
+                >
+                  <Info size={16} className="md:w-[18px] md:h-[18px]" />
+                </button>
+                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">How it Works</span>
+              </div>
 
-            <div className="relative group">
-              <button
-                onClick={handleSave}
-                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
-              >
-                <Save size={17} />
-              </button>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Save Project</span>
-            </div>
+              <div className="h-5 w-px bg-white/10 mx-0.5"></div>
 
-            <div className="h-5 w-px bg-white/10 mx-0.5"></div>
+              <div className="relative group">
+                <button
+                  onClick={handleLoadClick}
+                  className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-blue-400 hover:bg-white/10 transition-all duration-200"
+                >
+                  <FolderUp size={17} />
+                </button>
+                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Load Project</span>
+              </div>
 
-            <div className="relative group">
-              <button
-                onClick={handleExportExcel}
-                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-white/10 transition-all duration-200"
-              >
-                <Table size={17} />
-              </button>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Export to Excel</span>
-            </div>
+              <div className="relative group">
+                <button
+                  onClick={handleSave}
+                  className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
+                >
+                  <Save size={17} />
+                </button>
+                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Save Project</span>
+              </div>
 
-            <div className="relative group">
-              <button
-                onClick={handleDownloadTemplate}
-                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-white/10 transition-all duration-200"
-              >
-                <Download size={17} />
-              </button>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Download Template</span>
-            </div>
+              <div className="relative group">
+                <button
+                  onClick={handleExportExcel}
+                  className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-white/10 transition-all duration-200"
+                >
+                  <Table size={17} />
+                </button>
+                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Export to Excel</span>
+              </div>
 
-            <div className="relative group">
-              <button
-                onClick={() => excelInputRef.current?.click()}
-                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-blue-400 hover:bg-white/10 transition-all duration-200"
-              >
-                <Upload size={17} />
-              </button>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Import Excel</span>
-            </div>
+              <div className="h-5 w-px bg-white/10 mx-0.5"></div>
 
-            <div className="h-5 w-px bg-white/10 mx-0.5"></div>
-
-            <div className="relative group">
-              <button
-                onClick={handleShare}
-                className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
-              >
-                <Share2 size={16} className="md:w-[18px] md:h-[18px]" />
-              </button>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Copy Link</span>
+              <div className="relative group">
+                <button
+                  onClick={handleShare}
+                  className="p-1.5 md:p-2 rounded-md text-slate-400 hover:text-orange-400 hover:bg-white/10 transition-all duration-200"
+                >
+                  <Share2 size={16} className="md:w-[18px] md:h-[18px]" />
+                </button>
+                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 px-2.5 py-1.5 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 shadow-xl ring-1 ring-white/10 z-50 after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-slate-950">Copy Link</span>
+              </div>
             </div>
           </div>
         </div>
