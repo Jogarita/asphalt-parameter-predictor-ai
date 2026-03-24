@@ -21,6 +21,7 @@ import Toast from './components/Toast';
 import { Calculator, ArrowRight, Loader2, Share2, Save, RotateCcw, Info, Table, FolderUp, Maximize2, X, Download, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PremiumSelect from './components/PremiumSelect';
+import OptimizationPanel from './components/OptimizationPanel';
 
 const cloneColumns = (source: MixColumn[]): MixColumn[] =>
   source.map((col) => ({ ...col, values: { ...col.values }, predictedKeys: col.predictedKeys ? new Set(col.predictedKeys) : undefined }));
@@ -424,6 +425,24 @@ const App: React.FC = () => {
     setIsResetConfirmOpen(false);
   };
 
+  const handleApplyAISuggestion = (gradation: Record<string, string>) => {
+    setColumns((prev) => {
+      const targetExists = prev.some(c => c.type === 'target');
+      if (!targetExists) return prev;
+      return prev.map((col) => {
+        if (col.type !== 'target') return col;
+        const newValues = { ...col.values };
+        // Apply all sieve values from the AI suggestion
+        Object.entries(gradation).forEach(([key, value]) => {
+          newValues[key] = value;
+        });
+        return { ...col, values: newValues, predictedKeys: undefined };
+      });
+    });
+    setLastPrediction(null);
+    setNotification({ message: 'AI-suggested gradation applied to target trial.', type: 'success' });
+  };
+
   // Prediction flow: validate gradation → select model → run centered deviation regression → display result.
   const handlePredict = async () => {
     if (!targetCol) return;
@@ -719,6 +738,12 @@ const App: React.FC = () => {
             </button>
             <GradationChart columns={columns} />
           </div>
+
+          {/* 4. AI Optimization */}
+          <OptimizationPanel
+            columns={columns}
+            onApplySuggestion={handleApplyAISuggestion}
+          />
 
         </div>
       </main>
