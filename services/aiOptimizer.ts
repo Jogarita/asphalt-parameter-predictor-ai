@@ -33,6 +33,12 @@ function parseAIResponse(text: string): { gradation: Record<string, string>; exp
     jsonStr = fenceMatch[1].trim();
   }
 
+  // Extract JSON object if surrounded by other text
+  const jsonObjMatch = jsonStr.match(/\{[\s\S]*\}/);
+  if (jsonObjMatch) {
+    jsonStr = jsonObjMatch[0];
+  }
+
   const parsed = JSON.parse(jsonStr);
   const explanation = parsed.explanation || '';
 

@@ -119,7 +119,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       max_tokens: 1024,
       system: buildSystemPrompt(),
       messages: [
-        { role: 'user', content: buildUserPrompt(body) }
+        { role: 'user', content: buildUserPrompt(body) },
+        { role: 'assistant', content: '{' }
       ],
     });
 
@@ -128,7 +129,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'No text response from AI' });
     }
 
-    return res.status(200).json({ text: textBlock.text });
+    // Prepend '{' since we used it as assistant prefill to force JSON output
+    return res.status(200).json({ text: '{' + textBlock.text });
   } catch (err: any) {
     console.error('Optimization API error:', err);
     return res.status(500).json({ error: err.message || 'AI optimization failed' });
