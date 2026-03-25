@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { MixColumn } from '../types';
 import { SIEVES } from '../constants';
 import { optimizeGradation, OptimizationResult } from '../services/aiOptimizer';
-import { Sparkles, Loader2, ArrowRight, Check, AlertCircle, ChevronDown, ChevronUp, Key } from 'lucide-react';
+import { Sparkles, Loader2, ArrowRight, Check, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface OptimizationPanelProps {
   columns: MixColumn[];
@@ -25,31 +25,14 @@ const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplyS
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('anthropic_api_key') || '');
-  const [showApiKey, setShowApiKey] = useState(false);
 
   // Get the first reference column with data as Trial 1
   const trial1 = columns.find(c => c.type === 'reference' && c.isSelected);
   const paramOption = PARAM_OPTIONS.find(p => p.value === selectedParam)!;
 
-  const handleSaveApiKey = (key: string) => {
-    setApiKey(key);
-    if (key) {
-      localStorage.setItem('anthropic_api_key', key);
-    } else {
-      localStorage.removeItem('anthropic_api_key');
-    }
-  };
-
   const handleOptimize = async () => {
     if (!trial1) {
       setError('No reference trial found. Enter Trial 1 data first.');
-      return;
-    }
-
-    if (!apiKey.trim()) {
-      setError('Please enter your Anthropic API key.');
-      setShowApiKey(true);
       return;
     }
 
@@ -86,7 +69,6 @@ const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplyS
         targetParameter: selectedParam,
         threshold: thresholdNum,
         direction,
-        apiKey: apiKey.trim(),
       });
       setResult(optimResult);
     } catch (err: unknown) {
@@ -115,30 +97,6 @@ const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplyS
       </div>
 
       <div className="p-4 space-y-4">
-        {/* API Key section */}
-        <div>
-          <button
-            onClick={() => setShowApiKey(!showApiKey)}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
-          >
-            <Key size={12} />
-            <span className="font-medium">{apiKey ? 'API Key configured' : 'Set API Key'}</span>
-            {showApiKey ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </button>
-          {showApiKey && (
-            <div className="mt-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => handleSaveApiKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-sm focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-violet-400 font-mono"
-              />
-              <p className="text-[9px] text-slate-400 mt-1">Stored locally in your browser. Never sent to any server except Anthropic's API.</p>
-            </div>
-          )}
-        </div>
-
         {/* Parameter selector */}
         <div>
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
