@@ -10,6 +10,7 @@ const PARAM_LABELS: Record<string, string> = {
   vma: 'VMA (%)',
   ctIndex: 'CTIndex',
   iFit: 'Flexibility Index (FI)',
+  rutDepth: 'Rut Depth (mm)',
 };
 
 function buildSystemPrompt(): string {
@@ -55,6 +56,17 @@ For each sieve (excluding 19.0mm anchor and 0.075mm), check if % passing >= 100 
 
 **IFIT No FAA**: intercept=0.017, sieve_12_5=0.637, sieve_9_5=-0.434, sieve_4_75=0.049, sieve_2_36=-0.986, sieve_1_18=-0.2, sieve_0_600=3.25, sieve_0_300=-4.64, sieve_0_150=4.38, sieve_0_075=-3.04, gsb=45.5
 
+### Rut Depth Models
+
+**Rut Depth (with FAA)**: intercept=-0.0091, sieve_12_5=0.331, sieve_9_5=-0.326, sieve_4_75=0.285, sieve_2_36=-0.174, sieve_1_18=-0.734, sieve_0_600=1.709, sieve_0_300=-0.893, sieve_0_150=-0.212, sieve_0_075=-0.283, gsb=-52, faa=0.58
+
+**Rut Depth No FAA**: intercept=-0.0136, sieve_12_5=0.603, sieve_9_5=-0.444, sieve_4_75=0.378, sieve_2_36=-0.192, sieve_1_18=-0.989, sieve_0_600=2.113, sieve_0_300=-1.37, sieve_0_150=0.378, sieve_0_075=-0.668, gsb=-35.1
+
+## OPTIMIZATION STRATEGY
+- For VMA, CTIndex, and FI: the goal is to find the LOWEST predicted value that is still >= the threshold. Make conservative adjustments — just enough to meet the threshold, not overshoot it.
+- For Rut Depth: the goal is to find the HIGHEST predicted value that is still <= the threshold. Make conservative adjustments — just enough to meet the threshold, not undershoot it.
+- In all cases, aim for a predicted value as CLOSE to the threshold as possible while meeting it.
+
 ## CONSTRAINTS FOR GRADATION
 1. Values must be monotonically non-increasing (coarse to fine): sieve_19_0 >= sieve_12_5 >= ... >= sieve_0_075
 2. sieve_19_0 is typically 100 (keep it at 100)
@@ -94,6 +106,7 @@ ${hasFaa ? `FAA: ${faa}` : 'FAA: not provided'}
 Measured ${PARAM_LABELS[targetParameter]} for Trial 1: ${measuredParam || 'not provided'}
 
 Target: Find a gradation for Trial 2 where the predicted ${PARAM_LABELS[targetParameter]} is ${direction} ${threshold}.
+${direction === '>=' ? `The predicted value should be as CLOSE to ${threshold} as possible while being >= ${threshold}. Do not overshoot significantly.` : `The predicted value should be as CLOSE to ${threshold} as possible while being <= ${threshold}. Do not undershoot significantly.`}
 
 Use the regression model coefficients to reason about which sieve values to adjust. Consider the sign and magnitude of each coefficient to determine the direction and size of changes needed. The prediction uses Trial 1 as the reference with its measured value, so the predicted value for Trial 2 depends on the deviation between Trial 2 and Trial 1 gradation values.
 

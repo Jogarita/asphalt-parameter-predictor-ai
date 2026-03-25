@@ -4,9 +4,13 @@ import { runPrediction } from './predictionModels';
 
 export interface OptimizationRequest {
   trial1: MixColumn;
-  targetParameter: 'vma' | 'ctIndex' | 'iFit';
+  targetParameter: 'vma' | 'ctIndex' | 'iFit' | 'rutDepth';
   threshold: number;
-  direction: '>=' | '<=';
+}
+
+// Direction is fixed per parameter: rutDepth uses <=, everything else uses >=
+function getDirection(param: string): '>=' | '<=' {
+  return param === 'rutDepth' ? '<=' : '>=';
 }
 
 export interface OptimizationResult {
@@ -22,6 +26,7 @@ const PARAM_LABELS: Record<string, string> = {
   vma: 'VMA (%)',
   ctIndex: 'CTIndex',
   iFit: 'Flexibility Index (FI)',
+  rutDepth: 'Rut Depth (mm)',
 };
 
 function parseAIResponse(text: string): { gradation: Record<string, string>; explanation: string } {
@@ -85,9 +90,12 @@ async function callOptimizeAPI(body: Record<string, unknown>): Promise<string> {
 }
 
 export async function optimizeGradation(req: OptimizationRequest): Promise<OptimizationResult> {
+  const direction = getDirection(req.targetParameter);
   const maxAttempts = 3;
-  let bestResult: OptimizationResult | null = null;
-  let bestDistance = Infinity;
+  // Track all valid results to pick the best one
+  const validResults: OptimizationResult[] = [];
+  let closestMiss: OptimizationResult | null = null;
+  let closestMissDistance = Infinity;
 
   const gsb = req.trial1.values['gsb'] || 'not provided';
   const faa = req.trial1.values['faa'];
@@ -100,9 +108,16 @@ export async function optimizeGradation(req: OptimizationRequest): Promise<Optim
   }
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const refinementNote = attempt > 0 && bestResult
-      ? `\n\nPrevious attempt produced a predicted value of ${bestResult.predictedValue.toFixed(1)}. This ${req.direction === '>=' ? 'did not reach' : 'exceeded'} the threshold of ${req.threshold}. Please adjust the gradation more aggressively in the right direction.`
-      : '';
+    let refinementNote = '';
+    if (attempt > 0) {
+      if (validResults.length > 0) {
+        // We have a result that meets threshold — ask for one closer to threshold
+        const best = validResults[validResults.length - 1];
+        refinementNote = `\n\nPrevious attempt produced a predicted value of ${best.predictedValue.toFixed(1)}, which meets the threshold. However, try to get the value CLOSER to ${req.threshold} while still meeting the ${direction} ${req.threshold} constraint. Make smaller adjustments.`;
+      } else if (closestMiss) {
+        refinementNote = `\n\nPrevious attempt produced a predicted value of ${closestMiss.predictedValue.toFixed(1)}. This ${direction === '>=' ? 'did not reach' : 'exceeded'} the threshold of ${req.threshold}. Please adjust the gradation more aggressively in the right direction.`;
+      }
+    }
 
     const text = await callOptimizeAPI({
       trial1Values,
@@ -111,7 +126,7 @@ export async function optimizeGradation(req: OptimizationRequest): Promise<Optim
       hasFaa,
       measuredParam,
       targetParameter: req.targetParameter,
-      direction: req.direction,
+      direction,
       threshold: req.threshold,
       refinementNote,
     });
@@ -146,29 +161,43 @@ export async function optimizeGradation(req: OptimizationRequest): Promise<Optim
       const predictedValue = prediction[req.targetParameter] as number;
       const modelUsed = prediction.usedModel || '';
 
-      const meetsThreshold = req.direction === '>='
+      const meetsThreshold = direction === '>='
         ? predictedValue >= req.threshold
         : predictedValue <= req.threshold;
 
-      const distance = req.direction === '>='
-        ? req.threshold - predictedValue
-        : predictedValue - req.threshold;
+      // Distance from threshold (how far above/below)
+      const overshoot = direction === '>='
+        ? predictedValue - req.threshold
+        : req.threshold - predictedValue;
 
       if (meetsThreshold) {
-        return { suggestedGradation: fixedGradation, predictedValue, explanation, modelUsed };
-      }
-
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestResult = { suggestedGradation: fixedGradation, predictedValue, explanation, modelUsed };
+        validResults.push({ suggestedGradation: fixedGradation, predictedValue, explanation, modelUsed });
+      } else {
+        // Track closest miss
+        const missDistance = Math.abs(overshoot);
+        if (missDistance < closestMissDistance) {
+          closestMissDistance = missDistance;
+          closestMiss = { suggestedGradation: fixedGradation, predictedValue, explanation, modelUsed };
+        }
       }
     } catch {
       continue;
     }
   }
 
-  if (bestResult) {
-    return bestResult;
+  // Pick the result closest to threshold among those that meet it
+  if (validResults.length > 0) {
+    validResults.sort((a, b) => {
+      const distA = Math.abs(a.predictedValue - req.threshold);
+      const distB = Math.abs(b.predictedValue - req.threshold);
+      return distA - distB;
+    });
+    return validResults[0];
+  }
+
+  // Fallback: return closest miss
+  if (closestMiss) {
+    return closestMiss;
   }
 
   throw new Error('Failed to generate a valid gradation after multiple attempts.');

@@ -10,9 +10,10 @@ interface OptimizationPanelProps {
 }
 
 const PARAM_OPTIONS = [
-  { value: 'vma', label: 'VMA', unit: '%', subLabel: 'Voids in Mineral Aggregate' },
-  { value: 'ctIndex', label: 'CTIndex', unit: '', subLabel: 'Cracking Tolerance Index' },
-  { value: 'iFit', label: 'FI', unit: '', subLabel: 'Flexibility Index' },
+  { value: 'vma', label: 'VMA', unit: '%', subLabel: 'Voids in Mineral Aggregate', direction: '>=', dirLabel: 'Minimum' },
+  { value: 'ctIndex', label: 'CTIndex', unit: '', subLabel: 'Cracking Tolerance Index', direction: '>=', dirLabel: 'Minimum' },
+  { value: 'iFit', label: 'FI', unit: '', subLabel: 'Flexibility Index', direction: '>=', dirLabel: 'Minimum' },
+  { value: 'rutDepth', label: 'Rut Depth', unit: 'mm', subLabel: 'Hamburg Wheel Test', direction: '<=', dirLabel: 'Maximum' },
 ] as const;
 
 type OptParam = typeof PARAM_OPTIONS[number]['value'];
@@ -20,7 +21,6 @@ type OptParam = typeof PARAM_OPTIONS[number]['value'];
 const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplySuggestion }) => {
   const [selectedParam, setSelectedParam] = useState<OptParam>('vma');
   const [threshold, setThreshold] = useState('');
-  const [direction, setDirection] = useState<'>=' | '<='>('>=');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +68,6 @@ const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplyS
         trial1,
         targetParameter: selectedParam,
         threshold: thresholdNum,
-        direction,
       });
       setResult(optimResult);
     } catch (err: unknown) {
@@ -80,7 +79,7 @@ const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplyS
   };
 
   const meetsThreshold = result
-    ? direction === '>='
+    ? paramOption.direction === '>='
       ? result.predictedValue >= parseFloat(threshold)
       : result.predictedValue <= parseFloat(threshold)
     : false;
@@ -102,7 +101,7 @@ const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplyS
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
             Target Parameter
           </label>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {PARAM_OPTIONS.map(opt => (
               <button
                 key={opt.value}
@@ -122,27 +121,24 @@ const OptimizationPanel: React.FC<OptimizationPanelProps> = ({ columns, onApplyS
         {/* Threshold */}
         <div>
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-            Threshold
+            {paramOption.dirLabel} {paramOption.label}
           </label>
-          <div className="flex gap-2">
-            <select
-              value={direction}
-              onChange={(e) => setDirection(e.target.value as '>=' | '<=')}
-              className="px-2 py-2 text-sm border border-slate-300 rounded-sm bg-white focus:outline-none focus:ring-1 focus:ring-violet-400"
-            >
-              <option value=">=">&ge;</option>
-              <option value="<=">&le;</option>
-            </select>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-semibold text-slate-500 shrink-0">
+              {paramOption.direction === '>=' ? '\u2265' : '\u2264'}
+            </span>
             <input
               type="number"
               value={threshold}
               onChange={(e) => setThreshold(e.target.value)}
-              placeholder={selectedParam === 'vma' ? '14.0' : selectedParam === 'ctIndex' ? '80' : '8.0'}
+              placeholder={selectedParam === 'vma' ? '14.0' : selectedParam === 'ctIndex' ? '80' : selectedParam === 'iFit' ? '8.0' : '5.0'}
               className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-sm focus:outline-none focus:ring-1 focus:ring-violet-400 font-mono"
             />
-            <span className="flex items-center text-xs text-slate-400 font-medium">
-              {paramOption.unit}
-            </span>
+            {paramOption.unit && (
+              <span className="flex items-center text-xs text-slate-400 font-medium">
+                {paramOption.unit}
+              </span>
+            )}
           </div>
         </div>
 
