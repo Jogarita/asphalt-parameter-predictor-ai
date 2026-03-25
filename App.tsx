@@ -18,10 +18,10 @@ import ResultsDashboard from './components/ResultsDashboard';
 import { runPrediction, validateGradation } from './services/predictionModels';
 import InfoModal from './components/InfoModal';
 import Toast from './components/Toast';
-import { Calculator, ArrowRight, Loader2, Share2, Save, RotateCcw, Info, Table, FolderUp, Maximize2, X, Download, Upload } from 'lucide-react';
+import { Calculator, ArrowRight, Loader2, Share2, Save, RotateCcw, Info, Table, FolderUp, Maximize2, X, Download, Upload, Sparkles, Check, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PremiumSelect from './components/PremiumSelect';
-import OptimizationPanel from './components/OptimizationPanel';
+import { optimizeGradation, OptimizationResult } from './services/aiOptimizer';
 
 const cloneColumns = (source: MixColumn[]): MixColumn[] =>
   source.map((col) => ({ ...col, values: { ...col.values }, predictedKeys: col.predictedKeys ? new Set(col.predictedKeys) : undefined }));
@@ -52,7 +52,18 @@ const App: React.FC = () => {
   // New State for Parameter Selection
   const [targetParam, setTargetParam] = useState<'vma' | 'rutDepth' | 'ctIndex' | 'iFit'>('vma');
 
+  // AI Optimization State
+  const [aiThreshold, setAiThreshold] = useState('');
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [aiResult, setAiResult] = useState<OptimizationResult | null>(null);
+
   const targetCol = columns.find((c) => c.type === 'target');
+
+  const AI_DIRECTION: Record<string, '>=' | '<='> = { vma: '>=', ctIndex: '>=', iFit: '>=', rutDepth: '<=' };
+  const AI_DIR_LABEL: Record<string, string> = { vma: 'Minimum', ctIndex: 'Minimum', iFit: 'Minimum', rutDepth: 'Maximum' };
+  const AI_PLACEHOLDER: Record<string, string> = { vma: '14.0', ctIndex: '80', iFit: '8.0', rutDepth: '5.0' };
+  const AI_UNIT: Record<string, string> = { vma: '%', ctIndex: '', iFit: '', rutDepth: 'mm' };
+  const PARAM_SHORT: Record<string, string> = { vma: 'VMA', ctIndex: 'IDEAL-CT', iFit: 'FI', rutDepth: 'Rut Depth' };
 
   const handleUpdateValue = (colId: string, rowId: string, value: string | undefined) => {
     setColumns((prev) =>
@@ -421,31 +432,61 @@ const App: React.FC = () => {
     setColumns(cloneColumns(INITIAL_COLUMNS));
     setTargetParam('vma');
     setLastPrediction(null);
+    setAiResult(null);
+    setAiThreshold('');
     setNotification({ message: 'All data reset to default.', type: 'success' });
     setIsResetConfirmOpen(false);
   };
 
-  const handleApplyAISuggestion = (gradation: Record<string, string>, predictedValue: number, paramId: string) => {
-    setColumns((prev) => {
-      const targetExists = prev.some(c => c.type === 'target');
-      if (!targetExists) return prev;
-      return prev.map((col) => {
-        if (col.type !== 'target') return col;
-        const newValues = { ...col.values };
-        // Apply all sieve values from the AI suggestion
-        Object.entries(gradation).forEach(([key, value]) => {
-          newValues[key] = value;
-        });
-        // Also set the predicted parameter value
-        newValues[paramId] = predictedValue.toFixed(1);
-        const predicted = new Set<string>();
-        predicted.add(paramId);
-        return { ...col, values: newValues, predictedKeys: predicted };
-      });
-    });
-    // Switch the target param selector to match what was optimized
-    setTargetParam(paramId as any);
+  const handleAIOptimize = async () => {
+    const trial1 = columns.find(c => c.type === 'reference' && c.isSelected);
+    if (!trial1) {
+      setNotification({ message: 'No reference trial found. Enter Trial 1 data first.', type: 'error' });
+      return;
+    }
+    const thresholdNum = parseFloat(aiThreshold);
+    if (isNaN(thresholdNum)) {
+      setNotification({ message: 'Enter a valid threshold value.', type: 'error' });
+      return;
+    }
+    const measuredVal = trial1.values[targetParam];
+    if (!measuredVal || measuredVal.trim() === '') {
+      setNotification({ message: `Trial 1 must have a measured ${PARAM_SHORT[targetParam]} value.`, type: 'error' });
+      return;
+    }
+    const hasGradation = SIEVES.some(s => { const v = trial1.values[s.id]; return v !== undefined && v !== ''; });
+    if (!hasGradation) {
+      setNotification({ message: 'Trial 1 must have gradation values entered.', type: 'error' });
+      return;
+    }
+
+    setIsOptimizing(true);
+    setNotification(null);
+    setAiResult(null);
     setLastPrediction(null);
+
+    try {
+      const result = await optimizeGradation({ trial1, targetParameter: targetParam as any, threshold: thresholdNum });
+      setAiResult(result);
+
+      // Auto-apply to target column
+      setColumns((prev) => {
+        return prev.map((col) => {
+          if (col.type !== 'target') return col;
+          const newValues = { ...col.values };
+          Object.entries(result.suggestedGradation).forEach(([key, value]) => { newValues[key] = value; });
+          newValues[targetParam] = result.predictedValue.toFixed(1);
+          const predicted = new Set<string>();
+          predicted.add(targetParam);
+          return { ...col, values: newValues, predictedKeys: predicted };
+        });
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Optimization failed.';
+      setNotification({ message: msg, type: 'error' });
+    } finally {
+      setIsOptimizing(false);
+    }
   };
 
   // Prediction flow: validate gradation → select model → run centered deviation regression → display result.
@@ -661,57 +702,141 @@ const App: React.FC = () => {
         <div className="xl:col-span-4 flex flex-col gap-4 md:gap-6 xl:sticky xl:top-20">
 
           {/* 1. Action Card */}
-          <div className="bg-white p-4 border border-slate-300">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+          <div className="bg-white border border-slate-300">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2 mb-2 border-b border-slate-100">
               <h2 className="text-base font-bold uppercase tracking-widest text-slate-900 flex items-center gap-2">
                 <Calculator size={16} className="text-orange-600" />
                 Control Panel
               </h2>
             </div>
 
+            <div className="px-4 pb-4">
+              <div className="mb-4">
+                <PremiumSelect
+                  label="Target Parameter"
+                  value={targetParam}
+                  onChange={(val) => { setTargetParam(val as any); setAiResult(null); }}
+                  options={[
+                    { value: 'vma', label: 'VMA', subLabel: 'Voids in Mineral Aggregate (%)' },
+                    { value: 'ctIndex', label: 'CTIndex', subLabel: 'Cracking Tolerance Index' },
+                    { value: 'iFit', label: 'FI', subLabel: 'Flexibility Index' },
+                    { value: 'rutDepth', label: 'Rut Depth', subLabel: 'Hamburg Wheel Test (mm)' },
+                  ]}
+                />
+              </div>
 
-
-            <div className="mb-4">
-              <PremiumSelect
-                label="Target Parameter"
-                value={targetParam}
-                onChange={(val) => setTargetParam(val as any)}
-                options={[
-                  { value: 'vma', label: 'VMA', subLabel: 'Voids in Mineral Aggregate (%)' },
-                  { value: 'ctIndex', label: 'CTIndex', subLabel: 'Cracking Tolerance Index' },
-                  { value: 'iFit', label: 'FI', subLabel: 'Flexibility Index' },
-                  { value: 'rutDepth', label: 'Rut Depth', subLabel: 'Hamburg Wheel Test (mm)' },
-                ]}
-              />
+              {/* Manual Prediction */}
+              <button
+                onClick={handlePredict}
+                disabled={isPredicting || isOptimizing}
+                className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
+              >
+                {isPredicting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Calculator size={14} />
+                    Run Model
+                    <ArrowRight size={14} />
+                  </>
+                )}
+              </button>
             </div>
 
-            <button
-              onClick={handlePredict}
-              disabled={isPredicting}
-              className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-base uppercase tracking-wide rounded-sm"
-            >
-              {isPredicting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  Run Model
-                  <ArrowRight size={16} />
-                </>
+            {/* AI Optimize Section */}
+            <div className="px-4 pb-4 pt-3 border-t border-slate-100 bg-gradient-to-b from-violet-50/40 to-white">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles size={14} className="text-violet-600" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-violet-800">AI Gradation Optimizer</span>
+              </div>
+
+              <div className="flex gap-2 mb-3">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-sm text-xs text-slate-500 shrink-0">
+                  <span className="font-semibold">{AI_DIR_LABEL[targetParam]}</span>
+                  <span className="font-mono">{AI_DIRECTION[targetParam] === '>=' ? '\u2265' : '\u2264'}</span>
+                </div>
+                <input
+                  type="number"
+                  value={aiThreshold}
+                  onChange={(e) => { setAiThreshold(e.target.value); setAiResult(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAIOptimize(); }}
+                  placeholder={AI_PLACEHOLDER[targetParam]}
+                  disabled={isOptimizing}
+                  className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-sm focus:outline-none focus:ring-1 focus:ring-violet-400 font-mono disabled:bg-slate-50"
+                />
+                {AI_UNIT[targetParam] && (
+                  <span className="flex items-center text-xs text-slate-400 font-medium shrink-0">{AI_UNIT[targetParam]}</span>
+                )}
+              </div>
+
+              <button
+                onClick={handleAIOptimize}
+                disabled={isOptimizing || isPredicting}
+                className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-300 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
+              >
+                {isOptimizing ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Optimizing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    Optimize Gradation
+                  </>
+                )}
+              </button>
+
+              {/* AI Result inline */}
+              {aiResult && (
+                <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <div className={`p-3 rounded-sm border ${
+                    (AI_DIRECTION[targetParam] === '>=' ? aiResult.predictedValue >= parseFloat(aiThreshold) : aiResult.predictedValue <= parseFloat(aiThreshold))
+                      ? 'border-emerald-300 bg-emerald-50/60' : 'border-amber-300 bg-amber-50/60'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Predicted {PARAM_SHORT[targetParam]}</span>
+                      {(AI_DIRECTION[targetParam] === '>=' ? aiResult.predictedValue >= parseFloat(aiThreshold) : aiResult.predictedValue <= parseFloat(aiThreshold)) ? (
+                        <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                          <Check size={9} /> Met
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                          <AlertCircle size={9} /> Closest
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold text-slate-900">{aiResult.predictedValue.toFixed(1)}</span>
+                      {AI_UNIT[targetParam] && <span className="text-xs text-slate-400">{AI_UNIT[targetParam]}</span>}
+                    </div>
+                    <p className="text-[9px] text-slate-400 mt-0.5">Model: {aiResult.modelUsed}</p>
+                  </div>
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-sm">
+                    <p className="text-xs text-slate-600 leading-relaxed">{aiResult.explanation}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-violet-600 font-medium">
+                    <Check size={11} />
+                    Gradation applied to target trial
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
-            <button
-              onClick={() => setIsResetConfirmOpen(true)}
-              disabled={isPredicting}
-              className="w-full mt-2 border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 font-semibold py-2 px-4 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
-            >
-              <RotateCcw size={14} />
-              Reset All Data
-            </button>
-
+            {/* Reset */}
+            <div className="px-4 pb-3 pt-1">
+              <button
+                onClick={() => setIsResetConfirmOpen(true)}
+                disabled={isPredicting || isOptimizing}
+                className="w-full border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 font-semibold py-1.5 px-4 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wide rounded-sm"
+              >
+                <RotateCcw size={12} />
+                Reset All Data
+              </button>
+            </div>
           </div>
 
           {/* 2. Results Dashboard */}
@@ -743,12 +868,6 @@ const App: React.FC = () => {
             </button>
             <GradationChart columns={columns} />
           </div>
-
-          {/* 4. AI Optimization */}
-          <OptimizationPanel
-            columns={columns}
-            onApplySuggestion={handleApplyAISuggestion}
-          />
 
         </div>
       </main>
