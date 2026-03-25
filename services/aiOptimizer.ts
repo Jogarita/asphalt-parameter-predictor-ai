@@ -22,23 +22,14 @@ export interface OptimizationResult {
 
 const SIEVE_IDS = SIEVES.map(s => s.id);
 
-const PARAM_LABELS: Record<string, string> = {
-  vma: 'VMA (%)',
-  ctIndex: 'CTIndex',
-  iFit: 'Flexibility Index (FI)',
-  rutDepth: 'Rut Depth (mm)',
-};
-
 function parseAIResponse(text: string): { gradation: Record<string, string>; explanation: string } {
   let jsonStr = text.trim();
 
-  // Remove markdown code fences if present
   const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) {
     jsonStr = fenceMatch[1].trim();
   }
 
-  // Extract JSON object if surrounded by other text
   const jsonObjMatch = jsonStr.match(/\{[\s\S]*\}/);
   if (jsonObjMatch) {
     jsonStr = jsonObjMatch[0];
@@ -61,12 +52,11 @@ function validateAndFixGradation(gradation: Record<string, string>): Record<stri
   const fixed = { ...gradation };
   fixed['sieve_19_0'] = '100';
 
-  const orderedIds = SIEVE_IDS;
-  for (let i = 1; i < orderedIds.length; i++) {
-    const prevVal = parseFloat(fixed[orderedIds[i - 1]] || '100');
-    const curVal = parseFloat(fixed[orderedIds[i]] || '0');
+  for (let i = 1; i < SIEVE_IDS.length; i++) {
+    const prevVal = parseFloat(fixed[SIEVE_IDS[i - 1]] || '100');
+    const curVal = parseFloat(fixed[SIEVE_IDS[i]] || '0');
     if (curVal > prevVal) {
-      fixed[orderedIds[i]] = prevVal.toFixed(1);
+      fixed[SIEVE_IDS[i]] = prevVal.toFixed(1);
     }
   }
 
@@ -89,10 +79,43 @@ async function callOptimizeAPI(body: Record<string, unknown>): Promise<string> {
   return data.text;
 }
 
+function buildTrial2AndPredict(
+  fixedGradation: Record<string, string>,
+  req: OptimizationRequest,
+  hasFaa: boolean,
+  faa: string | undefined
+): { predictedValue: number; modelUsed: string } {
+  const trial2: MixColumn = {
+    id: 'ai_trial_2',
+    name: 'AI Suggested',
+    type: 'target',
+    isSelected: true,
+    values: {
+      ...fixedGradation,
+      gsb: req.trial1.values['gsb'] || '',
+    },
+  };
+
+  if (hasFaa && faa) {
+    trial2.values['faa'] = faa;
+  }
+
+  const ref: MixColumn = {
+    ...req.trial1,
+    type: 'reference',
+    isSelected: true,
+  };
+
+  const prediction = runPrediction(trial2, req.targetParameter, [ref]);
+  return {
+    predictedValue: prediction[req.targetParameter] as number,
+    modelUsed: prediction.usedModel || '',
+  };
+}
+
 export async function optimizeGradation(req: OptimizationRequest): Promise<OptimizationResult> {
   const direction = getDirection(req.targetParameter);
-  const maxAttempts = 3;
-  // Track all valid results to pick the best one
+  const maxAttempts = 5;
   const validResults: OptimizationResult[] = [];
   let closestMiss: OptimizationResult | null = null;
   let closestMissDistance = Infinity;
@@ -107,15 +130,23 @@ export async function optimizeGradation(req: OptimizationRequest): Promise<Optim
     trial1Values[id] = req.trial1.values[id] || '0';
   }
 
+  // Track the last attempt's gradation and predicted value for iterative refinement
+  let lastGradation: Record<string, string> | null = null;
+  let lastPredicted: number | null = null;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let refinementNote = '';
-    if (attempt > 0) {
+    if (attempt > 0 && lastGradation && lastPredicted !== null) {
+      const gap = req.threshold - lastPredicted;
+      const absGap = Math.abs(gap).toFixed(1);
+      const lastGradStr = SIEVE_IDS.map(id => `${id}: ${lastGradation![id] || '0'}`).join(', ');
+
       if (validResults.length > 0) {
-        // We have a result that meets threshold — ask for one closer to threshold
-        const best = validResults[validResults.length - 1];
-        refinementNote = `\n\nPrevious attempt produced a predicted value of ${best.predictedValue.toFixed(1)}, which meets the threshold. However, try to get the value CLOSER to ${req.threshold} while still meeting the ${direction} ${req.threshold} constraint. Make smaller adjustments.`;
-      } else if (closestMiss) {
-        refinementNote = `\n\nPrevious attempt produced a predicted value of ${closestMiss.predictedValue.toFixed(1)}. This ${direction === '>=' ? 'did not reach' : 'exceeded'} the threshold of ${req.threshold}. Please adjust the gradation more aggressively in the right direction.`;
+        // Met threshold but want closer
+        refinementNote = `\n\nPrevious attempt gradation: ${lastGradStr}\nPredicted value: ${lastPredicted.toFixed(1)} (threshold: ${direction} ${req.threshold}, currently ${absGap} above). Try to get CLOSER to ${req.threshold} with smaller adjustments from the previous gradation.`;
+      } else {
+        // Didn't meet threshold — be more aggressive
+        refinementNote = `\n\nPrevious attempt gradation: ${lastGradStr}\nPredicted value: ${lastPredicted.toFixed(1)} — this is ${absGap} ${direction === '>=' ? 'below' : 'above'} the threshold of ${req.threshold}. You MUST adjust the gradation MORE AGGRESSIVELY. The gap is ${absGap}, so make larger changes to the high-sensitivity sieves to close this gap.`;
       }
     }
 
@@ -133,39 +164,16 @@ export async function optimizeGradation(req: OptimizationRequest): Promise<Optim
 
     const { gradation, explanation } = parseAIResponse(text);
     const fixedGradation = validateAndFixGradation(gradation);
-
-    // Build a Trial 2 MixColumn and run the actual prediction model
-    const trial2: MixColumn = {
-      id: 'ai_trial_2',
-      name: 'AI Suggested',
-      type: 'target',
-      isSelected: true,
-      values: {
-        ...fixedGradation,
-        gsb: req.trial1.values['gsb'] || '',
-      },
-    };
-
-    if (hasFaa) {
-      trial2.values['faa'] = faa!;
-    }
-
-    const ref: MixColumn = {
-      ...req.trial1,
-      type: 'reference',
-      isSelected: true,
-    };
+    lastGradation = fixedGradation;
 
     try {
-      const prediction = runPrediction(trial2, req.targetParameter, [ref]);
-      const predictedValue = prediction[req.targetParameter] as number;
-      const modelUsed = prediction.usedModel || '';
+      const { predictedValue, modelUsed } = buildTrial2AndPredict(fixedGradation, req, hasFaa, faa);
+      lastPredicted = predictedValue;
 
       const meetsThreshold = direction === '>='
         ? predictedValue >= req.threshold
         : predictedValue <= req.threshold;
 
-      // Distance from threshold (how far above/below)
       const overshoot = direction === '>='
         ? predictedValue - req.threshold
         : req.threshold - predictedValue;
@@ -173,13 +181,16 @@ export async function optimizeGradation(req: OptimizationRequest): Promise<Optim
       if (meetsThreshold) {
         validResults.push({ suggestedGradation: fixedGradation, predictedValue, explanation, modelUsed });
       } else {
-        // Track closest miss
         const missDistance = Math.abs(overshoot);
         if (missDistance < closestMissDistance) {
           closestMissDistance = missDistance;
           closestMiss = { suggestedGradation: fixedGradation, predictedValue, explanation, modelUsed };
         }
       }
+
+      // If we already have a result that meets threshold, stop early to save API calls
+      // (unless first valid result overshoots a lot — try one more to refine)
+      if (validResults.length >= 2) break;
     } catch {
       continue;
     }
@@ -187,15 +198,12 @@ export async function optimizeGradation(req: OptimizationRequest): Promise<Optim
 
   // Pick the result closest to threshold among those that meet it
   if (validResults.length > 0) {
-    validResults.sort((a, b) => {
-      const distA = Math.abs(a.predictedValue - req.threshold);
-      const distB = Math.abs(b.predictedValue - req.threshold);
-      return distA - distB;
-    });
+    validResults.sort((a, b) =>
+      Math.abs(a.predictedValue - req.threshold) - Math.abs(b.predictedValue - req.threshold)
+    );
     return validResults[0];
   }
 
-  // Fallback: return closest miss
   if (closestMiss) {
     return closestMiss;
   }

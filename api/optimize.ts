@@ -63,9 +63,11 @@ For each sieve (excluding 19.0mm anchor and 0.075mm), check if % passing >= 100 
 **Rut Depth No FAA**: intercept=-0.0136, sieve_12_5=0.603, sieve_9_5=-0.444, sieve_4_75=0.378, sieve_2_36=-0.192, sieve_1_18=-0.989, sieve_0_600=2.113, sieve_0_300=-1.37, sieve_0_150=0.378, sieve_0_075=-0.668, gsb=-35.1
 
 ## OPTIMIZATION STRATEGY
-- For VMA, CTIndex, and FI: the goal is to find the LOWEST predicted value that is still >= the threshold. Make conservative adjustments — just enough to meet the threshold, not overshoot it.
-- For Rut Depth: the goal is to find the HIGHEST predicted value that is still <= the threshold. Make conservative adjustments — just enough to meet the threshold, not undershoot it.
-- In all cases, aim for a predicted value as CLOSE to the threshold as possible while meeting it.
+CRITICAL: The predicted value MUST meet the threshold. This is the primary objective.
+- For VMA, CTIndex, and FI: predicted value MUST be >= threshold. Overshoot is acceptable — failing to meet threshold is NOT.
+- For Rut Depth: predicted value MUST be <= threshold. Undershoot is acceptable — exceeding threshold is NOT.
+- If the threshold is far from Trial 1's measured value, make AGGRESSIVE changes (5-15% per sieve on high-sensitivity sieves). Do not hold back.
+- Use coefficient magnitudes to prioritize: sieves with larger absolute coefficients have more impact. Focus adjustments there.
 
 ## CONSTRAINTS FOR GRADATION
 1. Values must be monotonically non-increasing (coarse to fine): sieve_19_0 >= sieve_12_5 >= ... >= sieve_0_075
@@ -73,7 +75,7 @@ For each sieve (excluding 19.0mm anchor and 0.075mm), check if % passing >= 100 
 3. All values are "% passing" between 0 and 100
 4. Keep Gsb the same as Trial 1 (do not change it)
 5. Keep FAA the same as Trial 1 if provided (do not change it)
-6. Changes should be realistic — avoid extreme jumps from Trial 1 values. Adjustments of 1-5% per sieve are typical.
+6. Adjustments can be 1-15% per sieve depending on how far the threshold is from the current value. Larger gaps require larger changes.
 
 ## RESPONSE FORMAT
 You MUST respond with ONLY a valid JSON object (no markdown, no backticks, no explanation outside JSON):

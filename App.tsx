@@ -425,7 +425,7 @@ const App: React.FC = () => {
     setIsResetConfirmOpen(false);
   };
 
-  const handleApplyAISuggestion = (gradation: Record<string, string>) => {
+  const handleApplyAISuggestion = (gradation: Record<string, string>, predictedValue: number, paramId: string) => {
     setColumns((prev) => {
       const targetExists = prev.some(c => c.type === 'target');
       if (!targetExists) return prev;
@@ -436,11 +436,16 @@ const App: React.FC = () => {
         Object.entries(gradation).forEach(([key, value]) => {
           newValues[key] = value;
         });
-        return { ...col, values: newValues, predictedKeys: undefined };
+        // Also set the predicted parameter value
+        newValues[paramId] = predictedValue.toFixed(1);
+        const predicted = new Set<string>();
+        predicted.add(paramId);
+        return { ...col, values: newValues, predictedKeys: predicted };
       });
     });
+    // Switch the target param selector to match what was optimized
+    setTargetParam(paramId as any);
     setLastPrediction(null);
-    setNotification({ message: 'AI-suggested gradation applied to target trial.', type: 'success' });
   };
 
   // Prediction flow: validate gradation → select model → run centered deviation regression → display result.
