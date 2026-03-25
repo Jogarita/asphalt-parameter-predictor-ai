@@ -52,6 +52,9 @@ const App: React.FC = () => {
   // New State for Parameter Selection
   const [targetParam, setTargetParam] = useState<'vma' | 'rutDepth' | 'ctIndex' | 'iFit'>('vma');
 
+  // Mode: predict (manual) vs optimize (AI)
+  const [mode, setMode] = useState<'predict' | 'optimize'>('predict');
+
   // AI Optimization State
   const [aiThreshold, setAiThreshold] = useState('');
   const [isOptimizing, setIsOptimizing] = useState(false);
@@ -701,21 +704,41 @@ const App: React.FC = () => {
         {/* Right Column: Dashboard & Controls */}
         <div className="xl:col-span-4 flex flex-col gap-4 md:gap-6 xl:sticky xl:top-20">
 
-          {/* 1. Action Card */}
-          <div className="bg-white border border-slate-300">
-            <div className="flex items-center justify-between px-4 pt-4 pb-2 mb-2 border-b border-slate-100">
-              <h2 className="text-base font-bold uppercase tracking-widest text-slate-900 flex items-center gap-2">
-                <Calculator size={16} className="text-orange-600" />
-                Control Panel
-              </h2>
+          {/* 1. Control Panel with Tabs */}
+          <div className="bg-white border border-slate-300 overflow-hidden">
+            {/* Mode Tabs */}
+            <div className="grid grid-cols-2">
+              <button
+                onClick={() => { setMode('predict'); setAiResult(null); }}
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 border-b-2 ${
+                  mode === 'predict'
+                    ? 'bg-white text-slate-900 border-orange-500'
+                    : 'bg-slate-50 text-slate-400 border-transparent hover:text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Calculator size={14} />
+                Predict
+              </button>
+              <button
+                onClick={() => { setMode('optimize'); setLastPrediction(null); }}
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 border-b-2 ${
+                  mode === 'optimize'
+                    ? 'bg-white text-violet-800 border-violet-500'
+                    : 'bg-slate-50 text-slate-400 border-transparent hover:text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Sparkles size={14} />
+                Optimize
+              </button>
             </div>
 
-            <div className="px-4 pb-4">
+            <div className="p-4">
+              {/* Shared: Target Parameter */}
               <div className="mb-4">
                 <PremiumSelect
                   label="Target Parameter"
                   value={targetParam}
-                  onChange={(val) => { setTargetParam(val as any); setAiResult(null); }}
+                  onChange={(val) => { setTargetParam(val as any); setAiResult(null); setLastPrediction(null); }}
                   options={[
                     { value: 'vma', label: 'VMA', subLabel: 'Voids in Mineral Aggregate (%)' },
                     { value: 'ctIndex', label: 'CTIndex', subLabel: 'Cracking Tolerance Index' },
@@ -725,109 +748,115 @@ const App: React.FC = () => {
                 />
               </div>
 
-              {/* Manual Prediction */}
-              <button
-                onClick={handlePredict}
-                disabled={isPredicting || isOptimizing}
-                className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
-              >
-                {isPredicting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Calculator size={14} />
-                    Run Model
-                    <ArrowRight size={14} />
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* AI Optimize Section */}
-            <div className="px-4 pb-4 pt-3 border-t border-slate-100 bg-gradient-to-b from-violet-50/40 to-white">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles size={14} className="text-violet-600" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-violet-800">AI Gradation Optimizer</span>
-              </div>
-
-              <div className="flex gap-2 mb-3">
-                <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-sm text-xs text-slate-500 shrink-0">
-                  <span className="font-semibold">{AI_DIR_LABEL[targetParam]}</span>
-                  <span className="font-mono">{AI_DIRECTION[targetParam] === '>=' ? '\u2265' : '\u2264'}</span>
+              {/* PREDICT MODE */}
+              {mode === 'predict' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Enter gradation in the target trial column, then predict the {PARAM_SHORT[targetParam]} value.
+                  </p>
+                  <button
+                    onClick={handlePredict}
+                    disabled={isPredicting}
+                    className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
+                  >
+                    {isPredicting ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        Run Model
+                        <ArrowRight size={14} />
+                      </>
+                    )}
+                  </button>
                 </div>
-                <input
-                  type="number"
-                  value={aiThreshold}
-                  onChange={(e) => { setAiThreshold(e.target.value); setAiResult(null); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleAIOptimize(); }}
-                  placeholder={AI_PLACEHOLDER[targetParam]}
-                  disabled={isOptimizing}
-                  className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-sm focus:outline-none focus:ring-1 focus:ring-violet-400 font-mono disabled:bg-slate-50"
-                />
-                {AI_UNIT[targetParam] && (
-                  <span className="flex items-center text-xs text-slate-400 font-medium shrink-0">{AI_UNIT[targetParam]}</span>
-                )}
-              </div>
+              )}
 
-              <button
-                onClick={handleAIOptimize}
-                disabled={isOptimizing || isPredicting}
-                className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-300 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
-              >
-                {isOptimizing ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Optimizing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={14} />
-                    Optimize Gradation
-                  </>
-                )}
-              </button>
+              {/* OPTIMIZE MODE */}
+              {mode === 'optimize' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Set a {AI_DIR_LABEL[targetParam].toLowerCase()} threshold and the AI will find a gradation for the target trial.
+                  </p>
 
-              {/* AI Result inline */}
-              {aiResult && (
-                <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                  <div className={`p-3 rounded-sm border ${
-                    (AI_DIRECTION[targetParam] === '>=' ? aiResult.predictedValue >= parseFloat(aiThreshold) : aiResult.predictedValue <= parseFloat(aiThreshold))
-                      ? 'border-emerald-300 bg-emerald-50/60' : 'border-amber-300 bg-amber-50/60'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Predicted {PARAM_SHORT[targetParam]}</span>
-                      {(AI_DIRECTION[targetParam] === '>=' ? aiResult.predictedValue >= parseFloat(aiThreshold) : aiResult.predictedValue <= parseFloat(aiThreshold)) ? (
-                        <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
-                          <Check size={9} /> Met
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
-                          <AlertCircle size={9} /> Closest
-                        </span>
-                      )}
+                  <div className="flex gap-2 items-center">
+                    <span className="text-sm font-semibold text-violet-600 shrink-0 w-8 text-center">
+                      {AI_DIRECTION[targetParam] === '>=' ? '\u2265' : '\u2264'}
+                    </span>
+                    <input
+                      type="number"
+                      value={aiThreshold}
+                      onChange={(e) => { setAiThreshold(e.target.value); setAiResult(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleAIOptimize(); }}
+                      placeholder={AI_PLACEHOLDER[targetParam]}
+                      disabled={isOptimizing}
+                      className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-sm focus:outline-none focus:ring-1 focus:ring-violet-400 font-mono disabled:bg-slate-50"
+                    />
+                    {AI_UNIT[targetParam] && (
+                      <span className="text-xs text-slate-400 font-medium shrink-0">{AI_UNIT[targetParam]}</span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleAIOptimize}
+                    disabled={isOptimizing}
+                    className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-300 text-white font-bold py-2.5 px-4 shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide rounded-sm"
+                  >
+                    {isOptimizing ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Optimizing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        Optimize Gradation
+                      </>
+                    )}
+                  </button>
+
+                  {/* AI Result */}
+                  {aiResult && (
+                    <div className="space-y-2 pt-1 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                      <div className={`p-3 rounded-sm border ${
+                        (AI_DIRECTION[targetParam] === '>=' ? aiResult.predictedValue >= parseFloat(aiThreshold) : aiResult.predictedValue <= parseFloat(aiThreshold))
+                          ? 'border-emerald-300 bg-emerald-50/60' : 'border-amber-300 bg-amber-50/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Predicted {PARAM_SHORT[targetParam]}</span>
+                          {(AI_DIRECTION[targetParam] === '>=' ? aiResult.predictedValue >= parseFloat(aiThreshold) : aiResult.predictedValue <= parseFloat(aiThreshold)) ? (
+                            <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                              <Check size={9} /> Met
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                              <AlertCircle size={9} /> Closest
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-2xl font-bold text-slate-900">{aiResult.predictedValue.toFixed(1)}</span>
+                          {AI_UNIT[targetParam] && <span className="text-xs text-slate-400">{AI_UNIT[targetParam]}</span>}
+                        </div>
+                        <p className="text-[9px] text-slate-400 mt-0.5">Model: {aiResult.modelUsed}</p>
+                      </div>
+                      <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-sm">
+                        <p className="text-xs text-slate-600 leading-relaxed">{aiResult.explanation}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-violet-600 font-medium">
+                        <Check size={11} />
+                        Gradation applied to target trial
+                      </div>
                     </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-bold text-slate-900">{aiResult.predictedValue.toFixed(1)}</span>
-                      {AI_UNIT[targetParam] && <span className="text-xs text-slate-400">{AI_UNIT[targetParam]}</span>}
-                    </div>
-                    <p className="text-[9px] text-slate-400 mt-0.5">Model: {aiResult.modelUsed}</p>
-                  </div>
-                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-sm">
-                    <p className="text-xs text-slate-600 leading-relaxed">{aiResult.explanation}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-violet-600 font-medium">
-                    <Check size={11} />
-                    Gradation applied to target trial
-                  </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Reset */}
-            <div className="px-4 pb-3 pt-1">
+            <div className="px-4 pb-3">
               <button
                 onClick={() => setIsResetConfirmOpen(true)}
                 disabled={isPredicting || isOptimizing}
